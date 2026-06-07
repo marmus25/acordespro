@@ -1,0 +1,46 @@
+# Dependencias
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Variables de entorno y credenciales
+.env
+.env.local
+.env*.local
+backend/.env.local
+
+# Build del frontend
+frontend/dist/
+frontend/.vite/
+
+# Build de Android
+frontend/android/build/
+frontend/android/.gradle/
+frontend/android/app/build/
+frontend/android/local.properties
+*.apk
+*.aab
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Logs
+*.log
+npm-debug.log*
+
+# Base de datos local (cuando la agreguemos)
+*.db
+*.sqlite
+
+# Archivos comprimidos
+*.zip
+*.rar
+*.7z

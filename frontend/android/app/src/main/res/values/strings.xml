@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AcordesPro</string>
+    <string name="title_activity_main">AcordesPro</string>
+    <string name="package_name">com.acordespro.app</string>
+    <string name="custom_url_scheme">com.acordespro.app</string>
+</resources>
