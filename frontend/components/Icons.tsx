@@ -171,3 +171,48 @@ export const ChordGridIcon = ({ className = "w-6 h-6" }) => (
     <circle cx="8" cy="10" r="1.8" fill="currentColor" stroke="none" /><circle cx="16" cy="14" r="1.8" fill="currentColor" stroke="none" /><circle cx="12" cy="10" r="1.8" fill="currentColor" stroke="none" />
   </svg>
 );
+
+export const TwoColumnsIcon = ({ className = "w-6 h-6" }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <rect x="2" y="3" width="9" height="18" rx="1.5" opacity="0.85"/>
+    <rect x="13" y="3" width="9" height="18" rx="1.5" opacity="0.85"/>
+  </svg>
+);
+
+export const ShareIcon = ({ className = "w-6 h-6" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+  </svg>
+);
+
+export const PhoneVerticalIcon = ({ className = "w-6 h-6" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <rect x="5" y="2" width="14" height="20" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10 18.5h4" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5.5h6" />
+  </svg>
+);
+
+export const PlayCircleIcon = ({ className = "w-6 h-6" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z" />
+  </svg>
+);
+
+export const InlineChordIcon = ({ className = "w-6 h-6" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" className={className}>
+    {/* Mini chord grid (top-left) */}
+    <line x1="4" y1="2" x2="4" y2="10" /><line x1="7" y1="2" x2="7" y2="10" /><line x1="10" y1="2" x2="10" y2="10" />
+    <line x1="3" y1="2" x2="11" y2="2" strokeWidth={2.5} />
+    <line x1="3" y1="5" x2="11" y2="5" /><line x1="3" y1="8" x2="11" y2="8" /><line x1="3" y1="10" x2="11" y2="10" />
+    <circle cx="4" cy="6.5" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="7" cy="9" r="1.4" fill="currentColor" stroke="none" />
+    {/* Chord name tick */}
+    <line x1="4" y1="13" x2="4" y2="15" strokeWidth={2} />
+    {/* Lyric lines */}
+    <line x1="3" y1="15" x2="21" y2="15" />
+    <line x1="3" y1="19" x2="21" y2="19" />
+    <line x1="3" y1="23" x2="14" y2="23" />
+  </svg>
+);

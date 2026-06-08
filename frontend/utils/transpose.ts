@@ -60,6 +60,10 @@ export const formatChordNotation = (chord: string, notation: 'english' | 'latin'
   return chord.replace(/[CDEFGAB]/g, (match) => latinMap[match]);
 };
 
+// Detecta si un token es un nombre de acorde válido (ej: Em, G, Am, C#m, Dm7, Bm/F#)
+const CHORD_TOKEN_RE = /^[A-G][#b]?(maj|min|m|M|dim|aug|sus[24]?|add\d+|[0-9]+)*(\/[A-G][#b]?)?$/;
+const isChordToken = (t: string) => CHORD_TOKEN_RE.test(t);
+
 export const parseChordProLine = (line: string): import('../types').ParsedLine => {
   const segments: import('../types').ParsedSegment[] = [];
   const regex = /\[(.*?)\]/g;
@@ -71,27 +75,33 @@ export const parseChordProLine = (line: string): import('../types').ParsedLine =
     if (match.index > lastIndex) {
       segments.push({ chord: null, text: line.substring(lastIndex, match.index) });
     }
-    
-    // We found a chord. We need to attach the text that follows it to this segment
-    // so they render together in a column.
+
     const chord = match[1];
     lastIndex = regex.lastIndex;
-    
+
     // Find the next chord or end of string to get the text for this chord
     const nextMatchIndex = line.indexOf('[', lastIndex);
     const textEndIndex = nextMatchIndex !== -1 ? nextMatchIndex : line.length;
     const text = line.substring(lastIndex, textEndIndex);
-    
+
     segments.push({ chord, text });
     lastIndex = textEndIndex;
-    
-    // Update regex lastIndex because we manually advanced
     regex.lastIndex = lastIndex;
   }
 
-  // If there were no chords, or text at the very beginning before any chords
+  // Si no había marcadores [acorde], verificar si la línea es solo acordes sin letra
+  // (ej: "Em  G  Am  C" en introducción instrumental)
   if (segments.length === 0 && line.length > 0) {
+    const tokens = line.trim().split(/\s+/);
+    const allChords = tokens.length > 0 && tokens.every(t => isChordToken(t));
+    if (allChords) {
+      for (const token of tokens) {
+        segments.push({ chord: token, text: '' });
+      }
+      return { segments, isChordOnly: true };
+    } else {
       segments.push({ chord: null, text: line });
+    }
   }
 
   return { segments };

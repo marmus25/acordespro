@@ -10,7 +10,6 @@ import { SetListDetail } from './components/SetListDetail';
 import { SongCatalog } from './components/SongCatalog';
 import { saveSong, updateSong } from './services/songbook';
 import { SetList } from './types';
-import { songCatalog } from './data/songCatalog';
 
 type AppState = 'idle' | 'loading' | 'viewing' | 'error' | 'songbook' | 'setlists' | 'setlist-detail' | 'catalog';
 
@@ -174,6 +173,10 @@ export default function App() {
               <SparklesIcon className="w-5 h-5" />
               <span className="hidden sm:inline text-sm font-medium">Catálogo</span>
             </button>
+            <button onClick={() => window.open('/editor.html', '_blank')} className="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400 transition-colors" title="Editor de acordes">
+              <ClipboardIcon className="w-5 h-5" />
+              <span className="hidden sm:inline text-sm font-medium">Editor</span>
+            </button>
             <button
               onClick={() => setDarkMode(d => !d)}
               className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -284,23 +287,15 @@ export default function App() {
                   <SparklesIcon className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white">Catálogo folklórico boliviano</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{songCatalog.length} canciones precargadas · sin IA</p>
+                  <h3 className="font-bold text-gray-900 dark:text-white">Catálogo comunitario</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Canciones compartidas por la comunidad · sin IA</p>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {['Saya', 'Huayno', 'Vals', 'Tonada', 'Marcha'].map(g => (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {['Saya', 'Huayno', 'Vals', 'Tonada', 'Cueca', 'Morenada'].map(g => (
                   <span key={g} className="px-2 py-1 bg-white dark:bg-gray-800 rounded-full text-xs font-medium text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">
                     {g}
                   </span>
-                ))}
-              </div>
-              <div className="space-y-1">
-                {songCatalog.slice(0, 3).map((s, i) => (
-                  <p key={i} className="text-sm text-gray-600 dark:text-gray-400">
-                    <span className="font-medium text-gray-800 dark:text-gray-200">{s.title}</span>
-                    {' — '}{s.artist}
-                  </p>
                 ))}
               </div>
               <div className="mt-3 text-right">

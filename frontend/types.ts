@@ -3,6 +3,7 @@ export interface SongData {
   artist: string;
   originalKey: string;
   lines: string[];
+  youtubeUrl?: string;
 }
 
 export interface SavedSong extends SongData {
@@ -24,4 +25,5 @@ export interface ParsedSegment {
 
 export interface ParsedLine {
   segments: ParsedSegment[];
+  isChordOnly?: boolean;
 }

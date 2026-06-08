@@ -32,8 +32,8 @@ export const PianoKeyboard: React.FC<Props> = ({ notes, size = 'large' }) => {
           x={i * wW + 0.5} y={0.5}
           width={wW - 1} height={wH - 1}
           rx={size === 'large' ? 3 : 2}
-          fill={noteSet.has(semi) ? '#3b82f6' : 'white'}
-          stroke={noteSet.has(semi) ? '#1d4ed8' : '#9ca3af'}
+          fill={noteSet.has(semi) ? '#bfdbfe' : 'white'}
+          stroke={noteSet.has(semi) ? '#2563eb' : '#9ca3af'}
           strokeWidth={0.8}
         />
       ))}
@@ -46,7 +46,7 @@ export const PianoKeyboard: React.FC<Props> = ({ notes, size = 'large' }) => {
             x={x} y={0.5}
             width={bW} height={bH}
             rx={size === 'large' ? 2 : 1}
-            fill={noteSet.has(semi) ? '#1d4ed8' : '#1f2937'}
+            fill={noteSet.has(semi) ? '#3b82f6' : '#1f2937'}
             stroke="#111"
             strokeWidth={0.5}
           />
