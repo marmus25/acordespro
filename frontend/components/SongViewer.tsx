@@ -9,10 +9,11 @@ import { PianoKeyboard } from './PianoKeyboard';
 import { listSetLists, createSetList, addSongToSetList } from '../services/setlist';
 import { MetronomePanel } from './MetronomePanel';
 import { ChordDiagramModal } from './ChordDiagramModal';
+import { PracticePanel } from './PracticePanel';
 import {
   PrinterIcon, ArrowLeftIcon, ZoomInIcon, ZoomOutIcon, FullscreenIcon, MinimizeIcon,
   LanguageIcon, SaveIcon, EditIcon, CheckIcon, XIcon,
-  AutoScrollIcon, MetronomeIcon, CapoIcon, ListMusicIcon, ChordGridIcon, SparklesIcon, InlineChordIcon, ShareIcon, TwoColumnsIcon, PlayCircleIcon, PhoneVerticalIcon,
+  AutoScrollIcon, MetronomeIcon, CapoIcon, ListMusicIcon, ChordGridIcon, SparklesIcon, InlineChordIcon, ShareIcon, TwoColumnsIcon, PlayCircleIcon, PhoneVerticalIcon, PracticeModeIcon,
 } from './Icons';
 import { publishCommunitySong } from '../services/communitySongs';
 
@@ -180,6 +181,10 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
   // Layout
   const [twoColumns, setTwoColumns] = useState(false);
 
+  // Practice mode
+  const [showPracticeMode, setShowPracticeMode] = useState(false);
+  const [practiceChord, setPracticeChord] = useState<string | null>(null);
+
   // PDF share
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -249,21 +254,72 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
         import('html2canvas'),
         import('jspdf'),
       ]);
-      const canvas = await html2canvas(contentRef.current, {
+      // Expandir temporalmente overflow para capturar diagramas que salgan del contenedor
+      const el = contentRef.current;
+      const overEls = Array.from(el.querySelectorAll<HTMLElement>('*')).filter(e => {
+        const s = window.getComputedStyle(e);
+        return s.overflowX === 'auto' || s.overflowX === 'scroll' ||
+               s.overflowY === 'auto' || s.overflowY === 'scroll';
+      });
+      const savedOverflow = overEls.map(e => ({ e, ox: e.style.overflowX, oy: e.style.overflowY }));
+      overEls.forEach(e => { e.style.overflowX = 'visible'; e.style.overflowY = 'visible'; });
+
+      const canvas = await html2canvas(el, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false,
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        windowWidth: document.documentElement.offsetWidth,
+        windowHeight: el.scrollHeight,
+        height: el.scrollHeight,
       });
+
+      // Restaurar overflow
+      savedOverflow.forEach(({ e, ox, oy }) => { e.style.overflowX = ox; e.style.overflowY = oy; });
       const imgData = canvas.toDataURL('image/jpeg', 0.92);
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pdfW = pdf.internal.pageSize.getWidth();
       const pdfH = pdf.internal.pageSize.getHeight();
       const imgH = (canvas.height * pdfW) / canvas.width;
-      const totalPages = Math.ceil(imgH / pdfH);
-      for (let page = 0; page < totalPages; page++) {
-        if (page > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, -page * pdfH, pdfW, imgH);
+      const mmPerPx = pdfW / canvas.width; // canvas pixel → mm
+
+      // Recoger posición (top/bottom en mm) de TODOS los bloques de ambas columnas
+      const elRect = contentRef.current.getBoundingClientRect();
+      const blocks: { top: number; bottom: number }[] = [];
+      contentRef.current.querySelectorAll<HTMLElement>('.print-break-inside-avoid').forEach(bl => {
+        const r = bl.getBoundingClientRect();
+        const top = (r.top - elRect.top) * 2 * mmPerPx;
+        const bot = (r.bottom - elRect.top) * 2 * mmPerPx;
+        if (bot > 0 && top < imgH) blocks.push({ top, bottom: bot });
+      });
+
+      // y es seguro si NINGÚN bloque lo atraviesa (de ninguna columna)
+      const isSafe = (y: number) =>
+        !blocks.some(b => b.top + 0.5 < y && b.bottom - 0.5 > y);
+
+      // Paginar usando cortes seguros
+      let yStart = 0;
+      let pageNum = 0;
+      while (yStart < imgH - 1) {
+        if (pageNum > 0) pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, -yStart, pdfW, imgH);
+        const idealBreak = yStart + pdfH;
+        if (idealBreak >= imgH) break;
+
+        // Candidatos: todos los "bottom" de bloques antes del corte ideal (descendente)
+        const candidates = blocks
+          .map(b => b.bottom)
+          .filter(y => y > yStart + 2 && y <= idealBreak)
+          .sort((a, b) => b - a);
+
+        let nextStart = idealBreak;
+        for (const c of candidates) {
+          if (isSafe(c)) { nextStart = c; break; }
+        }
+        yStart = nextStart;
+        pageNum++;
       }
       const blob = pdf.output('blob');
       const fileName = `${song.title} - ${song.artist}.pdf`;
@@ -602,6 +658,15 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
               <InlineChordIcon className="w-5 h-5" />
             </button>
           )}
+          {uniqueChords.length > 0 && (
+            <button
+              onClick={() => setShowPracticeMode(p => !p)}
+              className={toolBtn(showPracticeMode)}
+              title={showPracticeMode ? 'Cerrar modo práctica' : 'Modo práctica: diagrama + rasgueo al tocar un acorde'}
+            >
+              <PracticeModeIcon className="w-5 h-5" />
+            </button>
+          )}
           <button onClick={() => setAutoScroll(a => !a)} className={toolBtn(autoScroll)} title="Auto-scroll">
             <AutoScrollIcon className="w-5 h-5" />
           </button>
@@ -759,6 +824,15 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
 
       {/* Metronome panel */}
       {showMetronome && <MetronomePanel />}
+
+      {/* Practice mode panel */}
+      {showPracticeMode && (
+        <PracticePanel
+          activeChord={practiceChord}
+          chordShape={practiceChord ? chordShapeMap.get(practiceChord) ?? null : null}
+          onClose={() => { setShowPracticeMode(false); setPracticeChord(null); }}
+        />
+      )}
 
       {/* Capo panel */}
       {showCapo && (
@@ -927,9 +1001,10 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
         )}
 
         {!editMode && (
+          <div className={twoColumns ? 'overflow-x-auto' : ''}>
           <div
             className="font-mono leading-snug print-exact-colors"
-            style={{ fontSize: `${fontSize}px`, ...(twoColumns ? { columnCount: 2, columnGap: '3rem' } : {}) }}
+            style={{ fontSize: `${fontSize}px`, ...(twoColumns ? { minWidth: 680 } : {}) }}
           >
             {(() => {
               type RGrp = { type: 'sp'; i: number } | { type: 'v'; s: number; ls: string[] };
@@ -940,7 +1015,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                 else { if (!rc) rc = { s: i, ls: [] }; rc.ls.push(ln); }
               });
               if (rc) rg.push({ type: 'v', ...rc });
-              return rg.map(g => {
+              const renderGroup = (g: RGrp) => {
                 if (g.type === 'sp') return <div key={`sp-${g.i}`} style={{ height: `${fontSize * 0.7}px` }} />;
                 return (
                   <div key={g.s} className="print-break-inside-avoid mb-1" style={{ breakInside: 'avoid' }}>
@@ -1005,11 +1080,13 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                                       e.stopPropagation();
                                       setEditingChordPos({ lineIndex, segIndex });
                                       setEditingChordValue(displayChord);
+                                    } else if (showPracticeMode && rawChord) {
+                                      setPracticeChord(rawChord);
                                     } else if (rawChord && lookupChord(rawChord)) {
                                       setSelectedChord(rawChord);
                                     }
                                   }}
-                                  title={chordEditMode ? 'Tocá para cambiar nombre' : (rawChord && lookupChord(rawChord!) ? 'Ver diagrama' : undefined)}
+                                  title={chordEditMode ? 'Tocá para cambiar nombre' : showPracticeMode ? `Practicar ${displayChord}` : (rawChord && lookupChord(rawChord!) ? 'Ver diagrama' : undefined)}
                                 >
                                   {displayChord}
                                 </span>
@@ -1041,8 +1118,32 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                   })}
                   </div>
                 );
-              });
+              };
+              if (twoColumns) {
+                const allLines = song.lines;
+                const half = Math.ceil(allLines.length / 2);
+                const buildGroups = (lines: string[], startIdx: number) => {
+                  const lg: RGrp[] = [];
+                  let lc: { s: number; ls: string[] } | null = null;
+                  lines.forEach((ln, i) => {
+                    const li = startIdx + i;
+                    if (!ln.trim()) { if (lc) { lg.push({ type: 'v', ...lc }); lc = null; } lg.push({ type: 'sp', i: li }); }
+                    else { if (!lc) lc = { s: li, ls: [] }; lc.ls.push(ln); }
+                  });
+                  if (lc) lg.push({ type: 'v', ...lc });
+                  return lg.map(g => renderGroup(g));
+                };
+                return (
+                  <div className="flex gap-10">
+                    <div className="flex-1 min-w-0">{buildGroups(allLines.slice(0, half), 0)}</div>
+                    <div className="w-px self-stretch bg-gray-200 dark:bg-gray-700 shrink-0" />
+                    <div className="flex-1 min-w-0">{buildGroups(allLines.slice(half), half)}</div>
+                  </div>
+                );
+              }
+              return rg.map(g => renderGroup(g));
             })()}
+          </div>
           </div>
         )}
       </div>

@@ -216,3 +216,21 @@ export const InlineChordIcon = ({ className = "w-6 h-6" }) => (
     <line x1="3" y1="23" x2="14" y2="23" />
   </svg>
 );
+
+export const PracticeModeIcon = ({ className = "w-6 h-6" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    {/* Fretboard */}
+    <line x1="3" y1="3" x2="3" y2="13" /><line x1="7" y1="3" x2="7" y2="13" /><line x1="11" y1="3" x2="11" y2="13" />
+    <line x1="2" y1="3" x2="12" y2="3" strokeWidth={2.5} />
+    <line x1="2" y1="6" x2="12" y2="6" /><line x1="2" y1="9" x2="12" y2="9" /><line x1="2" y1="13" x2="12" y2="13" />
+    <circle cx="3" cy="7.5" r="1.5" fill="currentColor" stroke="none" />
+    <circle cx="7" cy="10.5" r="1.5" fill="currentColor" stroke="none" />
+    {/* Down-strum arrow */}
+    <line x1="18" y1="5" x2="18" y2="16" strokeWidth={2} />
+    <polyline points="15,13 18,16 21,13" strokeWidth={2} />
+    {/* Rhythm dots */}
+    <circle cx="14" cy="20" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="18" cy="20" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="22" cy="20" r="1.2" fill="currentColor" stroke="none" />
+  </svg>
+);
