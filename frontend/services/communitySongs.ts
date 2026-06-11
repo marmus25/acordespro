@@ -1,13 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { SongData } from '../types';
-
-// Cliente admin — solo se activa cuando el usuario ingresa la clave correcta
-const ADMIN_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxYWl0aGlzdGFsbXZsY3NmbnR3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDgxMzU0MiwiZXhwIjoyMDk2Mzg5NTQyfQ.nbUDRM6OM_5m7zd-cexXHM1Qj5MpTKeiNaYV6XoUd0I';
-const supabaseAdmin = createClient(
-  'https://gqaithistalmvlcsfntw.supabase.co',
-  ADMIN_KEY
-);
 
 export interface CommunitySong extends SongData {
   id: string;
@@ -52,23 +44,14 @@ export const publishCommunitySong = async (
   if (error) throw new Error(error.message);
 };
 
-export const incrementViewCount = async (id: string): Promise<void> => {
-  const { data } = await supabaseAdmin
-    .from('community_songs').select('view_count').eq('id', id).single();
-  if (data) {
-    await supabaseAdmin.from('community_songs')
-      .update({ view_count: (data.view_count ?? 0) + 1 })
-      .eq('id', id);
-  }
+export const incrementViewCount = async (_id: string): Promise<void> => {
+  // Vista contabilizada localmente — el service_role ya no está en el frontend
 };
 
-// ── Operaciones de admin (service_role) ───────────────────────────────────────
-export const deleteCommunitySong = async (id: string): Promise<void> => {
-  const { error } = await supabaseAdmin.from('community_songs').delete().eq('id', id);
-  if (error) throw new Error(error.message);
+export const deleteCommunitySong = async (_id: string): Promise<void> => {
+  throw new Error('Eliminá la canción directamente desde el panel de Supabase.');
 };
 
-export const updateCommunitySongGenre = async (id: string, genre: string): Promise<void> => {
-  const { error } = await supabaseAdmin.from('community_songs').update({ genre }).eq('id', id);
-  if (error) throw new Error(error.message);
+export const updateCommunitySongGenre = async (_id: string, _genre: string): Promise<void> => {
+  throw new Error('Editá el género directamente desde el panel de Supabase.');
 };
