@@ -40,7 +40,7 @@ export const SongCatalog: React.FC<Props> = ({ onSelect, onBack }) => {
   const [working, setWorking]       = useState(false);
   const [statusMsg, setStatusMsg]   = useState('');
 
-  const ADMIN_PIN = '1234'; // ← cambiá este PIN
+  const ADMIN_PIN = '1441';
 
   const load = useCallback(() => {
     setLoading(true);
