@@ -33,6 +33,23 @@ const loadSample = async (midi: number): Promise<AudioBuffer | null> => {
 const baseMidi = [40, 45, 50, 55, 59, 64];
 const baseFreqs = [82.41, 110.00, 146.83, 196.00, 246.94, 329.63];
 
+// Registro de gains activos para poder silenciarlos cuando hay un respiro (-)
+interface ActiveNote { gain: GainNode }
+const activeNotes: ActiveNote[] = [];
+
+const muteActive = () => {
+  const ctx = getAudioContext();
+  const now = ctx.currentTime;
+  activeNotes.forEach(({ gain }) => {
+    try {
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(0.8, now);
+      gain.gain.linearRampToValueAtTime(0.0001, now + 0.04); // fade de 40ms
+    } catch (_) { /* ya terminó */ }
+  });
+  activeNotes.length = 0;
+};
+
 export const preloadChord = (frets: (number | 'x' | 'o')[]) => {
   frets.forEach((fret, stringIndex) => {
     if (fret !== 'x') {
@@ -54,6 +71,12 @@ const playString = async (stringIndex: number, fretNum: number, startTime: numbe
     gain.gain.exponentialRampToValueAtTime(0.001, startTime + 4);
     source.connect(gain);
     gain.connect(ctx.destination);
+    const note: ActiveNote = { gain };
+    activeNotes.push(note);
+    source.onended = () => {
+      const idx = activeNotes.indexOf(note);
+      if (idx !== -1) activeNotes.splice(idx, 1);
+    };
     source.start(startTime);
   } else {
     const freq = baseFreqs[stringIndex] * Math.pow(2, fretNum / 12);
@@ -66,6 +89,12 @@ const playString = async (stringIndex: number, fretNum: number, startTime: numbe
     gain.gain.exponentialRampToValueAtTime(0.001, startTime + 2.5);
     osc.connect(gain);
     gain.connect(ctx.destination);
+    const note: ActiveNote = { gain };
+    activeNotes.push(note);
+    osc.onended = () => {
+      const idx = activeNotes.indexOf(note);
+      if (idx !== -1) activeNotes.splice(idx, 1);
+    };
     osc.start(startTime);
     osc.stop(startTime + 2.5);
   }
@@ -81,16 +110,21 @@ export const playChordAudio = (frets: (number | 'x' | 'o')[]) => {
   });
 };
 
-export const playStrum = (direction: 'D' | 'U' | '-', frets: (number | 'x' | 'o')[] = ['o', 2, 2, 'o', 'o', 'o']) => {
-  if (direction === '-') return;
+export const playStrum = (direction: 'D' | 'U' | '-' | 'DL', frets: (number | 'x' | 'o')[] = ['o', 2, 2, 'o', 'o', 'o']) => {
+  if (direction === '-') {
+    muteActive();
+    return;
+  }
   const ctx = getAudioContext();
   const now = ctx.currentTime;
+  const isDown = direction === 'D' || direction === 'DL';
+  const delay = direction === 'DL' ? 0.10 : 0.025; // DL = barrido lento 100ms por cuerda
   const activeStrings = frets
     .map((f, i) => ({ fret: f, stringIndex: i }))
     .filter(s => s.fret !== 'x');
-  const stringsToPlay = direction === 'U' ? [...activeStrings].reverse() : activeStrings;
+  const stringsToPlay = isDown ? activeStrings : [...activeStrings].reverse();
   stringsToPlay.forEach(({ fret, stringIndex }, i) => {
     const fretNum = fret === 'o' ? 0 : (fret as number);
-    playString(stringIndex, fretNum, now + i * 0.025);
+    playString(stringIndex, fretNum, now + i * delay);
   });
 };

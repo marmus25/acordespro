@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import YouTube from 'react-youtube';
 import { SongData } from '../types';
 import { parseChordProLine, transposeChord, formatChordNotation } from '../utils/transpose';
@@ -13,8 +13,9 @@ import { PracticePanel } from './PracticePanel';
 import {
   PrinterIcon, ArrowLeftIcon, ZoomInIcon, ZoomOutIcon, FullscreenIcon, MinimizeIcon,
   LanguageIcon, SaveIcon, EditIcon, CheckIcon, XIcon,
-  AutoScrollIcon, MetronomeIcon, CapoIcon, ListMusicIcon, ChordGridIcon, SparklesIcon, InlineChordIcon, ShareIcon, TwoColumnsIcon, PlayCircleIcon, PhoneVerticalIcon, PracticeModeIcon,
+  AutoScrollIcon, MetronomeIcon, CapoIcon, ListMusicIcon, ChordGridIcon, SparklesIcon, InlineChordIcon, ShareIcon, TwoColumnsIcon, PlayCircleIcon, PhoneVerticalIcon, PracticeModeIcon, FloatingChordIcon, SingModeIcon,
 } from './Icons';
+import { SingMode } from './SingMode';
 import { publishCommunitySong } from '../services/communitySongs';
 
 const SmallChordDiagram: React.FC<{ chordName: string; shape: ChordShape; onClick: () => void }> = ({ chordName, shape, onClick }) => {
@@ -118,6 +119,41 @@ const TinyChordDiagram: React.FC<{ shape: ChordShape; onClick: () => void; brigh
   );
 };
 
+const FloatChordDiagramSVG: React.FC<{ shape: ChordShape; color: string; size?: 'md' | 'sm' }> = ({ shape, color, size = 'md' }) => {
+  const padL = size === 'md' ? 14 : 10, padT = size === 'md' ? 26 : 20;
+  const strSp = size === 'md' ? 13 : 10, fretSp = size === 'md' ? 13 : 10, nFrets = 4;
+  const W = padL * 2 + strSp * 5, H = padT + nFrets * fretSp + 10;
+  const sx = (s: number) => padL + s * strSp;
+  const fy = (row: number) => padT + row * fretSp;
+  const dotCY = (row: number) => fy(row) - fretSp / 2;
+  const toRow = (fret: number) => fret - shape.baseFret + 1;
+  const r = size === 'md' ? 5 : 4;
+  const fs = size === 'md' ? 9 : 7;
+  return (
+    <div className="flex flex-col items-center">
+      {shape.baseFret > 1 && <span className="text-white/60 text-xs mb-0.5 leading-none">Tr.{shape.baseFret}</span>}
+      <svg width={W} height={H} className="text-white/90" overflow="visible">
+        {shape.baseFret === 1 && <rect x={sx(0)} y={fy(0)-2.5} width={sx(5)-sx(0)} height={3.5} rx={1.5} fill="currentColor" />}
+        {[0,1,2,3,4,5].map(s => <line key={s} x1={sx(s)} y1={fy(0)} x2={sx(s)} y2={fy(nFrets)} stroke="currentColor" strokeWidth={0.9} />)}
+        {Array.from({length: nFrets+1}, (_,i) => <line key={i} x1={sx(0)} y1={fy(i)} x2={sx(5)} y2={fy(i)} stroke="currentColor" strokeWidth={0.9} />)}
+        {shape.frets.map((fret, s) => {
+          if (fret === 0) return <text key={s} x={sx(s)} y={fy(0)-4} textAnchor="middle" fontSize={fs} fill="currentColor">○</text>;
+          if (fret === -1) return <text key={s} x={sx(s)} y={fy(0)-4} textAnchor="middle" fontSize={fs} fill="#ef4444">×</text>;
+          return null;
+        })}
+        {shape.barre && <rect x={sx(shape.barre.from)-4} y={dotCY(toRow(shape.barre.fret))-(r+1)} width={sx(shape.barre.to)-sx(shape.barre.from)+8} height={(r+1)*2} rx={r+1} fill={color} />}
+        {shape.frets.map((fret, s) => {
+          if (fret <= 0) return null;
+          const row = toRow(fret);
+          if (row < 1 || row > nFrets) return null;
+          if (shape.barre && fret === shape.barre.fret && s >= shape.barre.from && s <= shape.barre.to) return null;
+          return <circle key={s} cx={sx(s)} cy={dotCY(row)} r={r} fill={color} />;
+        })}
+      </svg>
+    </div>
+  );
+};
+
 const getChordTypeClass = (chord: string) => {
   const b = chord.replace(/^[CDEFGAB][#b]?/, '');
   if (/dim/i.test(b)) return 'text-red-500 dark:text-red-400';
@@ -184,6 +220,17 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
   // Practice mode
   const [showPracticeMode, setShowPracticeMode] = useState(false);
   const [practiceChord, setPracticeChord] = useState<string | null>(null);
+  const [practiceIsPlaying, setPracticeIsPlaying] = useState(false);
+  const [practiceTs, setPracticeTs] = useState<import('../utils/strumPresets').TimeSignature>('4/4');
+  const [practicePresetIdx, setPracticePresetIdx] = useState(0);
+  const chordCursorRef = useRef(-1);           // index into [data-chord-display] spans for strum-sync
+  const practiceIsPlayingRef = useRef(false);  // for use inside intervals without stale closure
+  const floatingChordRef = useRef<string | null>(null);
+
+  // Floating chord display
+  const [showFloatingChord, setShowFloatingChord] = useState(false);
+  const [floatingChord, setFloatingChord] = useState<string | null>(null);
+  const [floatingDiagramType, setFloatingDiagramType] = useState<'guitar' | 'piano'>('guitar');
 
   // PDF share
   const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -195,6 +242,9 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
   const [editingChordValue, setEditingChordValue] = useState('');
   const [movingChordLine, setMovingChordLine] = useState<{ lineIndex: number } | null>(null);
   const [movingChordLineText, setMovingChordLineText] = useState('');
+
+  // Sing mode
+  const [showSingMode, setShowSingMode] = useState(false);
 
   // TikTok / vertical mode
   const [showTikTokMode, setShowTikTokMode] = useState(false);
@@ -379,14 +429,18 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
           return;
         }
         container.scrollTop += scrollSpeed * 0.6;
-        // Detectar próximo acorde bajo la línea de lectura
+        // Detectar acorde actual: el último que quedó en/sobre la línea de lectura
         const contRect = container.getBoundingClientRect();
         const lineY = contRect.top + contRect.height * 0.35;
-        const els = container.querySelectorAll('[data-chord]');
-        let next: string | null = null;
-        for (const el of Array.from(els)) {
-          if (el.getBoundingClientRect().top > lineY) { next = el.getAttribute('data-chord'); break; }
+        const els = Array.from(container.querySelectorAll<HTMLElement>('[data-chord]'));
+        let current: string | null = null;
+        let firstBelow: string | null = null;
+        for (const el of els) {
+          const top = el.getBoundingClientRect().top;
+          if (top <= lineY) { current = el.getAttribute('data-chord'); }
+          else if (!firstBelow) { firstBelow = el.getAttribute('data-chord'); }
         }
+        const next = current ?? firstBelow;
         setNextChord(prev => prev === next ? prev : next);
       }, 50);
       return () => { if (tiktokPageTimer.current) clearInterval(tiktokPageTimer.current); };
@@ -410,23 +464,134 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
   }, []);
 
   useEffect(() => {
+    if (!showFloatingChord) { setFloatingChord(null); return; }
+    const detect = () => {
+      const els = document.querySelectorAll<HTMLElement>('[data-chord-display]');
+      const lineY = window.innerHeight * 0.4;
+      let last: string | null = null;
+      let firstVisible: string | null = null;
+      for (const el of Array.from(els)) {
+        const top = el.getBoundingClientRect().top;
+        if (top < lineY) last = el.getAttribute('data-chord-display');
+        if (firstVisible === null && top > 0 && top < window.innerHeight) firstVisible = el.getAttribute('data-chord-display');
+      }
+      // Si todavía no pasó ningún acorde la línea, muestra el primero visible en pantalla
+      setFloatingChord(last ?? firstVisible);
+    };
+    window.addEventListener('scroll', detect, { passive: true });
+    const vr = viewerRef.current;
+    vr?.addEventListener('scroll', detect, { passive: true });
+    detect();
+    return () => {
+      window.removeEventListener('scroll', detect);
+      vr?.removeEventListener('scroll', detect);
+    };
+  }, [showFloatingChord]);
+
+  // Auto-activar diagrama flotante cuando arranca el auto-scroll
+  useEffect(() => {
+    if (autoScroll) setShowFloatingChord(true);
+  }, [autoScroll]);
+
+  // Mantener ref del chord flotante para callbacks sin closure stale
+  useEffect(() => { floatingChordRef.current = floatingChord; }, [floatingChord]);
+
+  // Sincronizar el acorde del PracticePanel con el acorde flotante detectado por scroll
+  useEffect(() => {
+    if (showPracticeMode && floatingChord) setPracticeChord(floatingChord);
+  }, [floatingChord, showPracticeMode]);
+
+  const handleRestartPractice = useCallback(() => {
+    chordCursorRef.current = -1;
+    // Reutiliza handleNextChord que ya contiene la lógica de scroll y selección
+    // Se llama con timeout para que el estado se actualice antes
+    setTimeout(() => {
+      const spans = Array.from(document.querySelectorAll<HTMLElement>('[data-chord-display]'));
+      if (spans.length === 0) return;
+      chordCursorRef.current = 0;
+      const target = spans[0];
+      const chord = target.getAttribute('data-chord-display');
+      setFloatingChord(chord);
+      if (chord) { setPracticeChord(chord); setNextChord(chord); }
+      const rect = target.getBoundingClientRect();
+      if (showTikTokMode && tiktokScrollRef.current) {
+        tiktokScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (isFullscreen && viewerRef.current) {
+        viewerRef.current.scrollTop = 0;
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 0);
+  }, [isFullscreen, showTikTokMode]);
+
+  // Strum-sync: avanzar al siguiente acorde en el DOM cuando el PracticePanel completa N compases
+  const handleNextChord = useCallback(() => {
+    const spans = Array.from(document.querySelectorAll<HTMLElement>('[data-chord-display]'));
+    if (spans.length === 0) return;
+    chordCursorRef.current = (chordCursorRef.current + 1) % spans.length;
+    const target = spans[chordCursorRef.current];
+    const chord = target.getAttribute('data-chord-display');
+    setFloatingChord(chord);
+    if (chord) { setPracticeChord(chord); setNextChord(chord); }
+    // Scroll target a la línea de lectura
+    const rect = target.getBoundingClientRect();
+    if (showTikTokMode && tiktokScrollRef.current) {
+      const contRect = tiktokScrollRef.current.getBoundingClientRect();
+      const delta = (rect.top - contRect.top) - contRect.height * 0.35;
+      tiktokScrollRef.current.scrollBy({ top: delta, behavior: 'smooth' });
+    } else if (isFullscreen && viewerRef.current) {
+      viewerRef.current.scrollTop += rect.top - window.innerHeight * 0.4;
+    } else {
+      window.scrollBy({ top: rect.top - window.innerHeight * 0.4, behavior: 'smooth' });
+    }
+  }, [isFullscreen, showTikTokMode]);
+
+  // Cuando el PracticePanel arranca/para, inicializar cursor y sincronizar scroll en modo TikTok
+  const handlePracticePlayChange = useCallback((playing: boolean) => {
+    setPracticeIsPlaying(playing);
+    practiceIsPlayingRef.current = playing;
+    if (playing) {
+      const spans = Array.from(document.querySelectorAll<HTMLElement>('[data-chord-display]'));
+      const cur = floatingChordRef.current;
+      const idx = cur ? spans.findIndex(s => s.getAttribute('data-chord-display') === cur) : -1;
+      // idx (no idx-1): el primer handleNextChord avanza al SIGUIENTE acorde,
+      // no repite el acorde actual (evita el compás extra al inicio)
+      chordCursorRef.current = idx >= 0 ? idx : -1;
+      // En modo TikTok: arrancar el scroll también
+      if (showTikTokMode) setAutoScroll(true);
+    } else {
+      chordCursorRef.current = -1;
+      // En modo TikTok: detener el scroll también
+      if (showTikTokMode) setAutoScroll(false);
+    }
+  }, [showTikTokMode]);
+
+  useEffect(() => {
     if (showTikTokMode) {
       tiktokVerseIdx.current = 0;
+      setNextChord(null);
       tiktokScrollRef.current?.scrollTo({ top: 0 });
       const container = tiktokScrollRef.current;
       if (!container) return;
-      const onScroll = () => {
+      const detectChord = () => {
         const contRect = container.getBoundingClientRect();
         const lineY = contRect.top + contRect.height * 0.35;
-        const els = container.querySelectorAll('[data-chord]');
-        let next: string | null = null;
-        for (const el of Array.from(els)) {
-          if (el.getBoundingClientRect().top > lineY) { next = el.getAttribute('data-chord'); break; }
+        const els = Array.from(container.querySelectorAll<HTMLElement>('[data-chord]'));
+        let current: string | null = null;
+        let firstBelow: string | null = null;
+        for (const el of els) {
+          const top = el.getBoundingClientRect().top;
+          if (top <= lineY) {
+            current = el.getAttribute('data-chord');
+          } else if (!firstBelow) {
+            firstBelow = el.getAttribute('data-chord');
+          }
         }
-        setNextChord(next);
+        setNextChord(current ?? firstBelow);
       };
-      container.addEventListener('scroll', onScroll, { passive: true });
-      return () => container.removeEventListener('scroll', onScroll);
+      container.addEventListener('scroll', detectChord, { passive: true });
+      setTimeout(detectChord, 50);
+      return () => container.removeEventListener('scroll', detectChord);
     } else {
       if (tiktokPageTimer.current) clearInterval(tiktokPageTimer.current);
       setAutoScroll(false);
@@ -523,7 +688,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
 
   const uniqueChords = useMemo(() => {
     const chordRegex = /\[([^\]]+)\]/g;
-    const plainChordRe = /^[A-G][#b]?(maj7?|min7?|m7?|M7?|7|9|11|13|dim7?|aug|sus[24]?|add\d+|6)*(\/[A-G][#b]?)?$/;
+    const plainChordRe = /^[A-G][#b]?(maj7?|min7?|m7?|M7?|7|9|11|13|dim7?|aug|sus[24]?|add\d+|6|[b#]\d+)*(\/[A-G][#b]?)?$/;
     const isPlainChord = (t: string) => plainChordRe.test(t);
     const isChordOnlyLine = (line: string) => {
       const tokens = line.trim().split(/\s+/).filter(Boolean);
@@ -667,6 +832,16 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
               <PracticeModeIcon className="w-5 h-5" />
             </button>
           )}
+          {uniqueChords.length > 0 && (
+            <button
+              onClick={() => setShowFloatingChord(f => !f)}
+              className={`flex items-center gap-1.5 px-2 py-2 rounded-lg border transition-colors shadow-sm text-sm font-medium ${showFloatingChord ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+              title={showFloatingChord ? 'Ocultar diagrama flotante (abajo al centro)' : 'Mostrar diagrama del acorde actual abajo al centro'}
+            >
+              <FloatingChordIcon className="w-5 h-5" />
+              <span className="hidden md:inline">Diagrama</span>
+            </button>
+          )}
           <button onClick={() => setAutoScroll(a => !a)} className={toolBtn(autoScroll)} title="Auto-scroll">
             <AutoScrollIcon className="w-5 h-5" />
           </button>
@@ -676,6 +851,16 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
           <button onClick={() => setShowTikTokMode(true)} className={toolBtn(false)} title="Modo vertical 9:16 para grabar TikTok">
             <PhoneVerticalIcon className="w-5 h-5" />
           </button>
+          {uniqueChords.length > 0 && (
+            <button
+              onClick={() => setShowSingMode(true)}
+              className={`flex items-center gap-1.5 px-2 py-2 rounded-lg border transition-colors shadow-sm text-sm font-medium bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600`}
+              title="Modo cantar: acorde grande + rasgueo + letra sincronizados"
+            >
+              <SingModeIcon className="w-5 h-5" />
+              <span className="hidden md:inline">Cantar</span>
+            </button>
+          )}
           <button onClick={() => setShowMetronome(m => !m)} className={toolBtn(showMetronome)} title="Metrónomo">
             <MetronomeIcon className="w-5 h-5" />
           </button>
@@ -816,7 +1001,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
       {autoScroll && (
         <div className="flex items-center gap-3 px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-100 dark:border-yellow-800 print-hidden">
           <span className="text-sm text-yellow-800 dark:text-yellow-300 font-medium">Auto-scroll activo</span>
-          <input type="range" min={0.5} max={10} step={0.1} value={scrollSpeed} onChange={e => setScrollSpeed(Number(e.target.value))} className="w-32 accent-yellow-600" />
+          <input type="range" min={0.1} max={10} step={0.1} value={scrollSpeed} onChange={e => setScrollSpeed(Number(e.target.value))} className="w-32 accent-yellow-600" />
           <span className="text-xs text-yellow-600 dark:text-yellow-400">Velocidad: {scrollSpeed.toFixed(1)}</span>
           <button onClick={() => setAutoScroll(false)} className="ml-auto text-xs text-yellow-700 dark:text-yellow-300 hover:text-yellow-900 dark:hover:text-yellow-100 font-medium">Detener</button>
         </div>
@@ -830,7 +1015,13 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
         <PracticePanel
           activeChord={practiceChord}
           chordShape={practiceChord ? chordShapeMap.get(practiceChord) ?? null : null}
-          onClose={() => { setShowPracticeMode(false); setPracticeChord(null); }}
+          onClose={() => { setShowPracticeMode(false); setPracticeChord(null); chordCursorRef.current = -1; }}
+          onNextChord={handleNextChord}
+          onPlayChange={handlePracticePlayChange}
+          onRestart={handleRestartPractice}
+          sharedTs={practiceTs}
+          sharedPresetIdx={practicePresetIdx}
+          onPresetChange={(ts, idx) => { setPracticeTs(ts); setPracticePresetIdx(idx); }}
         />
       )}
 
@@ -938,12 +1129,12 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
             <div className="p-3 space-y-2">
               <div className="flex gap-2">
                 <input
-                  type="url"
+                  type="text"
                   value={videoInput}
                   onChange={e => setVideoInput(e.target.value)}
                   placeholder="https://youtube.com/watch?v=... o URL de video"
                   className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  onKeyDown={e => e.key === 'Enter' && loadVideo()}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); loadVideo(); } }}
                 />
                 <button
                   onClick={loadVideo}
@@ -1073,8 +1264,9 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                                   className={`font-bold select-all ${
                                     chordEditMode
                                       ? 'cursor-pointer text-amber-600 dark:text-amber-400 border-b border-dashed border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-t px-0.5'
-                                      : `${getChordTypeClass(rawChord || '')} ${rawChord && lookupChord(rawChord!) ? 'cursor-pointer hover:opacity-70' : ''}`
+                                      : `${getChordTypeClass(rawChord || '')} ${rawChord && (lookupChord(rawChord!) || showPracticeMode) ? 'cursor-pointer hover:opacity-70' : ''}`
                                   }`}
+                                  data-chord-display={(showFloatingChord || showPracticeMode) ? rawChord : undefined}
                                   onClick={e => {
                                     if (chordEditMode) {
                                       e.stopPropagation();
@@ -1148,8 +1340,61 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
         )}
       </div>
 
+      {/* Floating chord display */}
+      {showFloatingChord && floatingChord && !editMode && !showTikTokMode && (
+        <div
+          className="fixed bottom-8 left-1/2 z-50 pointer-events-none select-none print-hidden"
+          style={{ transform: 'translateX(-50%)' }}
+        >
+          <div
+            className="rounded-2xl px-6 py-4 flex flex-col items-center gap-2 shadow-2xl"
+            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.08)' }}
+          >
+            {/* Selector guitarra / piano */}
+            <div className="pointer-events-auto flex gap-1 self-end">
+              <button
+                onClick={() => setFloatingDiagramType('guitar')}
+                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${floatingDiagramType === 'guitar' ? 'bg-white text-black' : 'bg-white/10 text-white/50 hover:text-white/80'}`}
+              >🎸 Guitarra</button>
+              <button
+                onClick={() => setFloatingDiagramType('piano')}
+                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${floatingDiagramType === 'piano' ? 'bg-white text-black' : 'bg-white/10 text-white/50 hover:text-white/80'}`}
+              >🎹 Piano</button>
+            </div>
+            {/* Diagrama */}
+            {chordShapeMap.get(floatingChord)
+              ? <FloatChordDiagramSVG shape={chordShapeMap.get(floatingChord)!} color={getChordColorTT(floatingChord)} size="md" />
+              : pianoNotesMap.get(floatingChord)
+                ? <PianoKeyboard notes={pianoNotesMap.get(floatingChord)!} size="large" />
+                : null
+            }
+            {/* Nombre del acorde */}
+            <span
+              className="font-black text-3xl leading-none"
+              style={{ color: getChordColorTT(floatingChord), textShadow: `0 0 20px ${getChordColorTT(floatingChord)}88` }}
+            >
+              {formatChordNotation(applyAccidental(floatingChord), notation)}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Chord diagram modal */}
       {selectedChord && <ChordDiagramModal chordName={selectedChord} onClose={() => setSelectedChord(null)} />}
+
+      {/* Sing mode */}
+      {showSingMode && (
+        <SingMode
+          song={song}
+          transposeSteps={transposeSteps}
+          chordShapeMap={chordShapeMap}
+          pianoNotesMap={pianoNotesMap}
+          youtubeId={youtubeId}
+          notation={notation}
+          applyAccidental={applyAccidental}
+          onClose={() => setShowSingMode(false)}
+        />
+      )}
 
       {/* Move chord: line editor */}
       {movingChordLine && (
@@ -1207,9 +1452,10 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
               {/* Header compacto: título + controles en una fila */}
               <div className="shrink-0 z-10 px-3 pt-1.5 pb-1">
                 <div className="flex items-center gap-1.5">
-                  {autoScroll && (
+                  {(autoScroll || practiceIsPlaying) && (
                     <span className="flex items-center gap-0.5 text-red-400 text-[10px] font-bold shrink-0">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />REC
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                      {practiceIsPlaying ? 'SYNC' : 'REC'}
                     </span>
                   )}
                   <div className="flex-1 min-w-0">
@@ -1223,7 +1469,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                     {autoScroll ? '⏸' : '▶'}
                   </button>
                   <input
-                    type="range" min={0.5} max={10} step={0.1} value={scrollSpeed}
+                    type="range" min={0.1} max={10} step={0.1} value={scrollSpeed}
                     onChange={e => setScrollSpeed(Number(e.target.value))}
                     className="w-20 accent-cyan-400 shrink-0"
                     title="Velocidad de scroll"
@@ -1260,6 +1506,56 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                 </div>
               )}
 
+              {/* Barra práctica: acorde grande + rasgueo — ARRIBA DE LA LETRA */}
+              {(showFloatingChord || showPracticeMode) && (
+                <div className="shrink-0 z-10">
+                  {(() => {
+                    const displayC = (showPracticeMode && practiceChord) ? practiceChord : nextChord;
+                    if (!displayC) return null;
+                    return (
+                      <div className="flex items-center gap-3 justify-center px-3 pt-2 pb-1" style={{ background: 'rgba(0,0,0,0.6)' }}>
+                        {practiceIsPlaying && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                            <span className="text-[9px] font-bold text-red-400 tracking-widest">REC</span>
+                          </div>
+                        )}
+                        <div className="flex gap-1 shrink-0">
+                          <button onClick={() => setFloatingDiagramType('guitar')} className={`text-[10px] px-1.5 py-0.5 rounded font-bold transition-colors ${floatingDiagramType === 'guitar' ? 'bg-white text-black' : 'bg-white/10 text-white/40 hover:text-white/70'}`}>🎸</button>
+                          <button onClick={() => setFloatingDiagramType('piano')} className={`text-[10px] px-1.5 py-0.5 rounded font-bold transition-colors ${floatingDiagramType === 'piano' ? 'bg-white text-black' : 'bg-white/10 text-white/40 hover:text-white/70'}`}>🎹</button>
+                        </div>
+                        {chordShapeMap.get(displayC)
+                          ? <FloatChordDiagramSVG shape={chordShapeMap.get(displayC)!} color={getChordColorTT(displayC)} size="sm" />
+                          : pianoNotesMap.get(displayC)
+                            ? <PianoKeyboard notes={pianoNotesMap.get(displayC)!} size="small" />
+                            : null
+                        }
+                        <span className="font-black leading-none text-3xl shrink-0" style={{ color: getChordColorTT(displayC) }}>
+                          {formatChordNotation(applyAccidental(displayC), notation)}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                  {showPracticeMode && (
+                    <PracticePanel
+                      activeChord={practiceChord ?? nextChord}
+                      chordShape={(practiceChord ?? nextChord) ? chordShapeMap.get(practiceChord ?? nextChord ?? '') ?? null : null}
+                      onClose={() => {}}
+                      hideClose
+                      hidePresets
+                      variant="dark"
+                      noDiagram
+                      autoStart={autoScroll}
+                      onNextChord={handleNextChord}
+                      onPlayChange={handlePracticePlayChange}
+                      onRestart={handleRestartPractice}
+                      sharedTs={practiceTs}
+                      sharedPresetIdx={practicePresetIdx}
+                    />
+                  )}
+                </div>
+              )}
+
               {/* Scrollable lyrics */}
               <div className="flex-1 relative min-h-0 overflow-hidden">
               <div
@@ -1288,7 +1584,24 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                       const vi = tikVerse++;
                       return (
                         <div key={g.s} className="mb-1" ref={el => { tiktokVerseEls.current[vi] = el; }}>
-                          {g.ls.map((line, inner) => {
+                          {(() => {
+                            // Merge lines where a line ends mid-word (no trailing space)
+                            // so split words like "golondr" + "ina" → "golondrina"
+                            const merged: string[] = [];
+                            let buf = '';
+                            for (const ln of g.ls) {
+                              if (!buf) { buf = ln; continue; }
+                              const prevText = parseChordProLine(buf).segments.map(s => s.text).join('').trimEnd();
+                              const nextText = parseChordProLine(ln).segments.map(s => s.text).join('');
+                              if (/\w$/.test(prevText) && /^[a-záéíóúüñ]/.test(nextText)) {
+                                buf = buf + ln; // concatenate inline ChordPro directly
+                              } else {
+                                merged.push(buf); buf = ln;
+                              }
+                            }
+                            if (buf) merged.push(buf);
+                            return merged;
+                          })().map((line, inner) => {
                             const parsedLine = parseChordProLine(line);
                             const lineHasChord = parsedLine.segments.some(s => s.chord);
                             const showDiagramRow = showInlineDiagrams && lineHasChord;
@@ -1305,8 +1618,11 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                                   }
                                   const showPianoTT = rawChord !== null && pianoNotesMap.has(rawChord) && !shownPianoChordsTT.has(rawChord);
                                   if (showPianoTT && rawChord) shownPianoChordsTT.add(rawChord);
+                                  // No gap when this segment's text ends mid-word (next segment continues it)
+                                  const nextSeg = parsedLine.segments[segIndex + 1];
+                                  const gapClass = (nextSeg && /\w$/.test(segment.text)) ? 'mr-0' : 'mr-1';
                                   return (
-                                    <div key={segIndex} className="flex flex-col mr-1 items-start">
+                                    <div key={segIndex} className={`flex flex-col ${gapClass} items-start`}>
                                       {showDiagramRow && (
                                         <div style={{ height: TINY_DIAGRAM_H }} className="flex flex-row items-end gap-1">
                                           {rawChord && chordShapeMap.has(rawChord) && (
@@ -1326,6 +1642,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                                           <span
                                             className="font-bold"
                                             data-chord={rawChord}
+                                            data-chord-display={showPracticeMode ? rawChord : undefined}
                                             style={{ fontSize: `${Math.max(fontSize - 2, 14)}px`, color: getChordColorTT(rawChord) }}
                                           >
                                             {displayChord}
