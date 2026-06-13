@@ -245,15 +245,18 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
   const [editingPatternId, setEditingPatternId] = useState<string | null>(null);
   const [dlDelay, setDlDelay]                   = useState(0.10);
   const [ttStrokeIdx, setTtStrokeIdx]           = useState(-1);
+  const [savedOk, setSavedOk]                   = useState(false);
   const [playingOverlay, setPlayingOverlay]     = useState<PlayingOverlayState | null>(null);
   const [showTikTokMode, setShowTikTokMode]     = useState(false);
   const timeoutsRef        = useRef<ReturnType<typeof setTimeout>[]>([]);
   const ttLyricsScrollRef  = useRef<HTMLDivElement>(null);
 
-  const measuresStorageKey = useMemo(
-    () => `chordplay_segmeasures_${song.title}_${song.artist}`.replace(/\s+/g, '_'),
+  const songKey = useMemo(
+    () => `${song.title}_${song.artist}`.replace(/\s+/g, '_'),
     [song.title, song.artist]
   );
+  const measuresStorageKey = useMemo(() => `chordplay_segmeasures_${songKey}`, [songKey]);
+  const sectionStorageKey  = useMemo(() => `chordplay_secmeasures_${songKey}`, [songKey]);
 
   // Convertir song.lines → secciones con acordes transpuestos
   const playSections = useMemo(() => {
@@ -298,6 +301,20 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
     });
   }, [playSections]);
 
+  // Cargar configuración global (bpm, patrón, dlDelay) al montar
+  useEffect(() => {
+    try {
+      const g = localStorage.getItem('chordplay_global');
+      if (g) {
+        const { bpm: b, patternId, dlDelay: dl } = JSON.parse(g);
+        if (typeof b === 'number') setBpm(b);
+        if (typeof patternId === 'string') setActivePatternId(patternId);
+        if (typeof dl === 'number') setDlDelay(dl);
+      }
+    } catch (_) {}
+  }, []);
+
+  // Cargar patrones personalizados
   useEffect(() => {
     const saved = localStorage.getItem('chordplay_custom_patterns');
     if (saved) { try { setCustomPatterns(JSON.parse(saved)); } catch (_) {} }
@@ -306,16 +323,21 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
     localStorage.setItem('chordplay_custom_patterns', JSON.stringify(customPatterns));
   }, [customPatterns]);
 
-  // Cargar/guardar compases por posición de acorde (por canción)
+  // Cargar compases por posición (por canción)
   useEffect(() => {
     const saved = localStorage.getItem(measuresStorageKey);
     if (saved) { try { setSegMeasures(JSON.parse(saved)); } catch (_) {} }
   }, [measuresStorageKey]);
   useEffect(() => {
-    if (Object.keys(segMeasures).length > 0) {
+    if (Object.keys(segMeasures).length > 0)
       localStorage.setItem(measuresStorageKey, JSON.stringify(segMeasures));
-    }
   }, [segMeasures, measuresStorageKey]);
+
+  // Cargar compases por sección (por canción)
+  useEffect(() => {
+    const saved = localStorage.getItem(sectionStorageKey);
+    if (saved) { try { setSectionMeasures(JSON.parse(saved)); } catch (_) {} }
+  }, [sectionStorageKey]);
 
   const allPatterns   = useMemo(() => [...UNIVERSAL_PATTERNS, ...customPatterns], [customPatterns]);
   const activePattern = useMemo(() => allPatterns.find(p => p.id === activePatternId) || UNIVERSAL_PATTERNS[0], [allPatterns, activePatternId]);
@@ -523,6 +545,14 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
   const updateSectionMeasures = (sIdx: number, delta: number) =>
     setSectionMeasures(prev => ({ ...prev, [sIdx]: Math.max(1, Math.min(8, (prev[sIdx] ?? 1) + delta)) }));
 
+  const handleSaveConfig = () => {
+    localStorage.setItem('chordplay_global', JSON.stringify({ bpm, patternId: activePatternId, dlDelay }));
+    localStorage.setItem(sectionStorageKey, JSON.stringify(sectionMeasures));
+    localStorage.setItem(measuresStorageKey, JSON.stringify(segMeasures));
+    setSavedOk(true);
+    setTimeout(() => setSavedOk(false), 2000);
+  };
+
   const STROKE_CYCLE: StrokeType[] = ['D', 'U', 'DL', '-'];
   const toggleStroke = (index: number) => {
     setBuilderStrokes(prev => {
@@ -622,6 +652,19 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
                     <span className="text-teal-400"><IconSettings size={24} /></span>
                     <h3 className="text-white font-semibold text-lg">Configuración de Reproducción</h3>
                   </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    {/* Botón guardar configuración */}
+                    <button
+                      onClick={handleSaveConfig}
+                      className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-bold transition-all shadow-lg border ${
+                        savedOk
+                          ? 'bg-teal-900/60 border-teal-500 text-teal-300'
+                          : 'bg-slate-800 border-slate-600 text-slate-300 hover:border-teal-500 hover:text-teal-300'
+                      }`}
+                    >
+                      <IconSave size={16} />
+                      {savedOk ? '✓ Guardado' : 'Guardar'}
+                    </button>
                   <button
                     onClick={isPlayingAll ? stopAll : handlePlayAll}
                     className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg w-full sm:w-auto ${
@@ -632,6 +675,7 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
                       ? <><IconSquare size={18} /> Detener Canción</>
                       : <><IconPlay   size={18} /> Reproducir Canción</>}
                   </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -1075,12 +1119,12 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
                               : isPast ? 'text-teal-800' : 'text-teal-500'
                           }`}>{seg.chord}</span>
                         )}
-                        <span className={`whitespace-pre font-bold leading-snug transition-all duration-500 ${
+                        <span className={`whitespace-pre leading-snug transition-all duration-500 text-lg ${
                           isCurrent
-                            ? 'text-teal-100 text-2xl font-black drop-shadow-[0_0_12px_rgba(94,234,212,0.4)]'
+                            ? 'text-teal-100 font-black drop-shadow-[0_0_12px_rgba(94,234,212,0.4)]'
                             : isPast
-                            ? 'text-teal-700 text-lg'
-                            : 'text-teal-300 text-lg font-semibold'
+                            ? 'text-teal-700 font-bold'
+                            : 'text-teal-300 font-semibold'
                         }`}>{seg.text}</span>
                       </div>
                     ))}
