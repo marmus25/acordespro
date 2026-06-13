@@ -28,12 +28,15 @@ interface Props {
   sharedTs?: TimeSignature;
   sharedPresetIdx?: number;
   onPresetChange?: (ts: TimeSignature, idx: number) => void;
+  measuresOverride?: number;
+  onMeasuresChange?: (n: number) => void;
 }
 
 export const PracticePanel: React.FC<Props> = ({
   activeChord, chordShape, onClose, hideClose = false, hidePresets = false, variant = 'light', noDiagram = false,
   onNextChord, onPlayChange, onRestart, autoStart,
   sharedTs, sharedPresetIdx, onPresetChange,
+  measuresOverride, onMeasuresChange,
 }) => {
   const [selectedTs, setSelectedTs] = useState<TimeSignature>(sharedTs ?? '4/4');
   const [presetIdx, setPresetIdx] = useState(sharedPresetIdx ?? 0);
@@ -100,7 +103,14 @@ export const PracticePanel: React.FC<Props> = ({
   useEffect(() => { patternRef.current = customPattern; }, [customPattern]);
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
-  useEffect(() => { measuresDoneRef.current = 0; setMeasuresDone(0); }, [activeChord]);
+  useEffect(() => {
+    measuresDoneRef.current = 0;
+    setMeasuresDone(0);
+    if (measuresOverride !== undefined) {
+      setMeasuresPerChord(measuresOverride);
+      measuresPerChordRef.current = measuresOverride;
+    }
+  }, [activeChord]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (autoStart === undefined) return;
@@ -331,7 +341,7 @@ export const PracticePanel: React.FC<Props> = ({
               <span className={`text-[9px] font-bold uppercase tracking-wide ${dk ? 'text-white/50' : 'text-gray-400'}`}>Compases</span>
               <div className="flex gap-1">
                 {MEASURES_OPTIONS.map(n => (
-                  <button key={n} onClick={() => setMeasuresPerChord(n)}
+                  <button key={n} onClick={() => { setMeasuresPerChord(n); measuresPerChordRef.current = n; onMeasuresChange?.(n); }}
                     className={`w-6 h-5 text-[10px] font-bold rounded transition-colors ${
                       n === measuresPerChord ? 'bg-blue-600 text-white'
                         : dk ? 'bg-white/10 text-white/60 hover:bg-white/20' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300'

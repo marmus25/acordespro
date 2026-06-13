@@ -299,6 +299,40 @@ export const playChordAudio = (frets: (number | 'x' | 'o')[]) => {
   });
 };
 
+export const scheduleStrum = (
+  direction: 'D' | 'U' | 'DL',
+  frets: (number | 'x' | 'o')[],
+  startTime: number,
+  vol = 0.82,
+  dlDelay = 0.10
+) => {
+  const isDown = direction === 'D' || direction === 'DL';
+  const delay  = direction === 'DL' ? dlDelay : 0.014;
+  const active = frets.map((f, i) => ({ fret: f, si: i })).filter(s => s.fret !== 'x');
+  const order  = isDown ? active : [...active].reverse();
+  order.forEach(({ fret, si }, i) => {
+    const fn = fret === 'o' ? 0 : (fret as number);
+    const v  = si <= 1 ? vol * 0.82 : vol;
+    playString(si, fn, startTime + i * delay, v);
+  });
+};
+
+export const getCtxTime = (): number => getAudioContext().currentTime;
+
+export const stopAllAudio = () => muteActive(20);
+
+export const ensureAudio = async (): Promise<void> => {
+  const ctx = getAudioContext();
+  if (ctx.state !== 'running') {
+    try { await ctx.resume(); } catch (_) {}
+  }
+  // Recargar samples si no se cargaron (puede pasar si el contexto estaba suspendido)
+  if (bufferMap.size === 0) {
+    samplesReady = false;
+    await preloadBaseSamples();
+  }
+};
+
 export const playStrum = (
   direction: 'D' | 'U' | '-' | 'DL',
   frets: (number | 'x' | 'o')[] = ['o', 2, 2, 'o', 'o', 'o']

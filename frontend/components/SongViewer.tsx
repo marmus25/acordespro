@@ -17,6 +17,7 @@ import {
 } from './Icons';
 import { SingMode } from './SingMode';
 import { publishCommunitySong } from '../services/communitySongs';
+import { ChordPlayView } from './ChordPlayView';
 
 const SmallChordDiagram: React.FC<{ chordName: string; shape: ChordShape; onClick: () => void }> = ({ chordName, shape, onClick }) => {
   const padLeft = 12, padTop = 20, strSpacing = 10, fretSpacing = 11, numFrets = 4;
@@ -246,6 +247,9 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
   // Sing mode
   const [showSingMode, setShowSingMode] = useState(false);
 
+  // ChordPlay mode
+  const [showChordPlay, setShowChordPlay] = useState(false);
+
   // TikTok / vertical mode
   const [showTikTokMode, setShowTikTokMode] = useState(false);
   const [tikTokBg, setTikTokBg] = useState<'black' | 'blue' | 'purple' | 'green'>('black');
@@ -253,6 +257,14 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
   const tiktokVerseEls = useRef<(HTMLDivElement | null)[]>([]);
   const tiktokVerseIdx = useRef(0);
   const tiktokPageTimer = useRef<number | null>(null);
+  // Compases por acorde en modo vertical (persistido por canción)
+  // Clave por índice de posición en el DOM (no por nombre) para soportar acordes repetidos
+  const [ttChordMeasures, setTtChordMeasures] = useState<Record<number, number>>({});
+  const [ttChordIdx, setTtChordIdx] = useState(-1);
+  const ttMeasuresKey = useMemo(
+    () => `tiktok_segmeasures_${song.title}_${song.artist}`.replace(/\s+/g, '_'),
+    [song.title, song.artist]
+  );
 
   // Media panel
   const [showMediaPanel, setShowMediaPanel] = useState(false);
@@ -509,6 +521,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
       const spans = Array.from(document.querySelectorAll<HTMLElement>('[data-chord-display]'));
       if (spans.length === 0) return;
       chordCursorRef.current = 0;
+      setTtChordIdx(0);
       const target = spans[0];
       const chord = target.getAttribute('data-chord-display');
       setFloatingChord(chord);
@@ -529,6 +542,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
     const spans = Array.from(document.querySelectorAll<HTMLElement>('[data-chord-display]'));
     if (spans.length === 0) return;
     chordCursorRef.current = (chordCursorRef.current + 1) % spans.length;
+    setTtChordIdx(chordCursorRef.current);
     const target = spans[chordCursorRef.current];
     const chord = target.getAttribute('data-chord-display');
     setFloatingChord(chord);
@@ -557,6 +571,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
       // idx (no idx-1): el primer handleNextChord avanza al SIGUIENTE acorde,
       // no repite el acorde actual (evita el compás extra al inicio)
       chordCursorRef.current = idx >= 0 ? idx : -1;
+      setTtChordIdx(idx >= 0 ? idx : -1);
       // En modo TikTok: arrancar el scroll también
       if (showTikTokMode) setAutoScroll(true);
     } else {
@@ -598,6 +613,15 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
       setNextChord(null);
     }
   }, [showTikTokMode]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(ttMeasuresKey);
+    if (saved) { try { setTtChordMeasures(JSON.parse(saved)); } catch (_) {} }
+  }, [ttMeasuresKey]);
+  useEffect(() => {
+    if (Object.keys(ttChordMeasures).length > 0)
+      localStorage.setItem(ttMeasuresKey, JSON.stringify(ttChordMeasures));
+  }, [ttChordMeasures, ttMeasuresKey]);
 
   const handleTranspose = (steps: number) => setTransposeSteps(prev => prev + steps);
   const handleZoom = (delta: number) => setFontSize(prev => Math.max(12, Math.min(prev + delta, 48)));
@@ -861,6 +885,13 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
               <span className="hidden md:inline">Cantar</span>
             </button>
           )}
+          <button
+            onClick={() => setShowChordPlay(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-colors shadow-sm text-sm font-bold bg-teal-600 hover:bg-teal-500 border-teal-600 text-white"
+            title="Modo ChordPlay: reproducir canción con rasgueo y diagramas"
+          >
+            <span>▶ Tocar</span>
+          </button>
           <button onClick={() => setShowMetronome(m => !m)} className={toolBtn(showMetronome)} title="Metrónomo">
             <MetronomeIcon className="w-5 h-5" />
           </button>
@@ -1022,6 +1053,8 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
           sharedTs={practiceTs}
           sharedPresetIdx={practicePresetIdx}
           onPresetChange={(ts, idx) => { setPracticeTs(ts); setPracticePresetIdx(idx); }}
+          measuresOverride={ttChordMeasures[ttChordIdx]}
+          onMeasuresChange={n => setTtChordMeasures(prev => ({ ...prev, [ttChordIdx]: n }))}
         />
       )}
 
@@ -1274,6 +1307,10 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                                       setEditingChordValue(displayChord);
                                     } else if (showPracticeMode && rawChord) {
                                       setPracticeChord(rawChord);
+                                      const el = e.currentTarget as HTMLElement;
+                                      const allSpans = Array.from(document.querySelectorAll<HTMLElement>('[data-chord-display]'));
+                                      const clickedIdx = allSpans.indexOf(el);
+                                      if (clickedIdx >= 0) { chordCursorRef.current = clickedIdx; setTtChordIdx(clickedIdx); }
                                     } else if (rawChord && lookupChord(rawChord)) {
                                       setSelectedChord(rawChord);
                                     }
@@ -1530,9 +1567,29 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                             ? <PianoKeyboard notes={pianoNotesMap.get(displayC)!} size="small" />
                             : null
                         }
-                        <span className="font-black leading-none text-3xl shrink-0" style={{ color: getChordColorTT(displayC) }}>
-                          {formatChordNotation(applyAccidental(displayC), notation)}
-                        </span>
+                        <div className="flex flex-col items-start shrink-0">
+                          <span className="font-black leading-none text-3xl" style={{ color: getChordColorTT(displayC) }}>
+                            {formatChordNotation(applyAccidental(displayC), notation)}
+                          </span>
+                          {/* Selector de compases por acorde */}
+                          {showPracticeMode && (
+                            <div className="flex items-center gap-1 mt-1">
+                              {[1,2,3,4].map(n => {
+                                const cur = ttChordMeasures[ttChordIdx] ?? 1;
+                                return (
+                                  <button
+                                    key={n}
+                                    onClick={() => setTtChordMeasures(prev => ({ ...prev, [ttChordIdx]: n }))}
+                                    className={`w-5 h-4 text-[9px] font-black rounded transition-all leading-none ${
+                                      cur === n ? 'bg-cyan-500 text-black' : 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white'
+                                    }`}
+                                  >{n}</button>
+                                );
+                              })}
+                              <span className="text-white/25 text-[8px] ml-0.5">compases</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })()}
@@ -1551,6 +1608,8 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                       onRestart={handleRestartPractice}
                       sharedTs={practiceTs}
                       sharedPresetIdx={practicePresetIdx}
+                      measuresOverride={ttChordMeasures[ttChordIdx]}
+                      onMeasuresChange={n => setTtChordMeasures(prev => ({ ...prev, [ttChordIdx]: n }))}
                     />
                   )}
                 </div>
@@ -1706,6 +1765,14 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
             </div>
           </div>
         </div>
+      )}
+
+      {showChordPlay && (
+        <ChordPlayView
+          song={song}
+          transposeSteps={transposeSteps}
+          onClose={() => setShowChordPlay(false)}
+        />
       )}
     </div>
   );

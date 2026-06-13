@@ -1,7 +1,12 @@
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import guitarDb from '@tombatossals/chords-db/lib/guitar.json';
+
 export interface ChordShape {
   frets: number[]; // [lowE, A, D, G, B, highE] — -1=muted, 0=open, N=fret#
   baseFret: number;
   barre?: { fret: number; from: number; to: number };
+  fingers?: number[]; // [0,3,2,0,1,0] — 0=open/muted, 1-4=dedo
 }
 
 const FLAT_TO_SHARP: Record<string, string> = {
@@ -52,10 +57,68 @@ function normalizeRoot(root: string): string {
   return FLAT_TO_SHARP[root] ?? root;
 }
 
+// ── Lookup desde @tombatossals/chords-db ──────────────────────────────────────
+// Nuestros sharps → claves que usa la DB
+const SHARP_TO_DB_KEY: Record<string, string> = {
+  'D#': 'Eb', 'G#': 'Ab', 'A#': 'Bb',
+};
+
+// Sufijo canónico nuestro → sufijo en la DB
+const OUR_SUFFIX_TO_DB: Record<string, string> = {
+  '':      'major', 'm':    'minor', '7':    '7',
+  'maj7':  'maj7',  'm7':   'm7',    'dim':  'dim',
+  'dim7':  'dim7',  'aug':  'aug',   'sus2': 'sus2',
+  'sus4':  'sus4',  'm7b5': 'm7b5',  'add9': 'add9',
+  '6':     '6',     'm6':   'm6',    '9':    '9',
+  'maj9':  'maj9',  'm9':   'm9',    'mMaj7':'mmaj7',
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lookupChordFromDB(root: string, suffix: string): ChordShape | null {
+  try {
+    const dbKey  = SHARP_TO_DB_KEY[root] ?? root;
+    const dbSfx  = OUR_SUFFIX_TO_DB[suffix];
+    if (!dbSfx) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const list: any[] = (guitarDb as any).chords[dbKey];
+    if (!list) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = list.find((c: any) => c.suffix === dbSfx);
+    if (!entry?.positions?.length) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pos: any = entry.positions[0];
+    // Detectar cejilla
+    let barre: ChordShape['barre'];
+    if (pos.barres?.length) {
+      const bf = pos.barres[0];
+      const indices = (pos.frets as number[])
+        .map((f, i) => (f === bf ? i : -1))
+        .filter(i => i >= 0);
+      if (indices.length >= 2)
+        barre = { fret: bf + (pos.baseFret ?? 1) - 1, from: indices[0], to: indices[indices.length - 1] };
+    }
+    return {
+      frets:    pos.frets as number[],
+      baseFret: pos.baseFret ?? 1,
+      barre,
+      fingers:  pos.fingers as number[],
+    };
+  } catch { return null; }
+}
+
 export function lookupChord(name: string): ChordShape | null {
   if (!name) return null;
-  // Slash chord: "Cm/Bb" → usar solo "Cm" para buscar el diagrama
+  // Slash chord: buscar primero el nombre exacto, luego stripear el bajo
   const slashIdx = name.indexOf('/');
+  if (slashIdx >= 0) {
+    // 1. Búsqueda exacta (Cm/Bb → busca 'Cm/Bb')
+    if (CHORDS[name]) return CHORDS[name];
+    // 2. Normalizar el bajo (Cm/Bb → Cm/A#) y buscar
+    const bassRaw = name.slice(slashIdx + 1);
+    const bassSharp = FLAT_TO_SHARP[bassRaw] ?? bassRaw;
+    const nameSharp = name.slice(0, slashIdx) + '/' + bassSharp;
+    if (CHORDS[nameSharp]) return CHORDS[nameSharp];
+  }
   const baseName = slashIdx >= 0 ? name.slice(0, slashIdx) : name;
   // Normalizar notaciones alternativas: Am7(5-) → Am7b5, G7(9+) → G7#9
   const normalized = baseName
@@ -72,10 +135,12 @@ export function lookupChord(name: string): ChordShape | null {
   const suffix = normalizeSuffix(rawSuffix.trim());
   const key = root + suffix;
 
-  // Direct lookup
-  if (CHORDS[key]) return CHORDS[key];
+  // Intentar DB profesional primero (tiene fingers para mostrar numeración)
+  const fromDB = lookupChordFromDB(root, suffix);
+  if (fromDB) return fromDB;
 
-  // Try with original suffix (for edge cases)
+  // Fallback: diccionario interno
+  if (CHORDS[key]) return CHORDS[key];
   const keyOrig = root + rawSuffix;
   if (CHORDS[keyOrig]) return CHORDS[keyOrig];
 
@@ -247,4 +312,25 @@ const CHORDS: Record<string, ChordShape> = {
   'A6':      { frets: [-1, 0, 2, 2, 2, 2], baseFret: 1 },
   'Am6':     { frets: [-1, 0, 2, 2, 1, 2], baseFret: 1 },
   'Em6':     { frets: [0, 2, 2, 0, 2, 0], baseFret: 1 },
+
+  // ── SLASH CHORDS (bajo específico) ─────────────────────
+  // Cm/Bb: cuerda A traste 1 (Bb) + forma Cm cerrada
+  'Cm/Bb':  { frets: [-1, 1, 3, 3, 4, 3], baseFret: 1 },
+  'Cm/A#':  { frets: [-1, 1, 3, 3, 4, 3], baseFret: 1 },
+  'Am/G':   { frets: [3, 0, 2, 2, 1, 0], baseFret: 1 },
+  'Am/E':   { frets: [0, 0, 2, 2, 1, 0], baseFret: 1 },
+  'C/G':    { frets: [3, 3, 2, 0, 1, 0], baseFret: 1 },
+  'C/E':    { frets: [0, 3, 2, 0, 1, 0], baseFret: 1 },
+  'G/B':    { frets: [-1, 2, 0, 0, 0, 3], baseFret: 1 },
+  'G/F#':   { frets: [2, 2, 0, 0, 0, 3], baseFret: 1 },
+  'D/F#':   { frets: [2, -1, 0, 2, 3, 2], baseFret: 1 },
+  'E/G#':   { frets: [4, 2, 2, 1, 0, 0], baseFret: 1 },
+  'A/C#':   { frets: [-1, 4, 4, 2, 2, 2], baseFret: 2 },
+  'F/A':    { frets: [0, 0, 3, 2, 1, 1], baseFret: 1 },
+  'F/C':    { frets: [-1, 3, 3, 2, 1, 1], baseFret: 1 },
+  'Dm/F':   { frets: [1, -1, 0, 2, 3, 1], baseFret: 1 },
+  'Em/G':   { frets: [3, 2, 2, 0, 0, 0], baseFret: 1 },
+  'Em/B':   { frets: [-1, 2, 2, 0, 0, 0], baseFret: 1 },
+  'Gm/Bb':  { frets: [-1, 1, 5, 3, 3, 3], baseFret: 1 },
+  'Gm/A#':  { frets: [-1, 1, 5, 3, 3, 3], baseFret: 1 },
 };
