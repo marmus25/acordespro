@@ -8,7 +8,7 @@ const getAudioContext = () => {
   return audioCtx;
 };
 
-// ── Muestras reales por nota — máx ±1 semitono de pitch shift ────────────────
+// ── 36 samples reales por nota — máx ±1 semitono de pitch shift ───────────────
 const BASE_SAMPLES: { midi: number; file: string }[] = [
   // Octava 2
   { midi: 40, file: '/samples/iSGtr_E2_f.wav'  },
@@ -72,7 +72,6 @@ const preloadBaseSamples = async () => {
   samplesReady = true;
 };
 
-// Inicia la carga tan pronto como este módulo se importa
 preloadBaseSamples();
 
 const getBuffer = (targetMidi: number): { buffer: AudioBuffer; baseMidi: number } | null => {
@@ -84,7 +83,7 @@ const getBuffer = (targetMidi: number): { buffer: AudioBuffer; baseMidi: number 
   return { buffer, baseMidi };
 };
 
-// ── EQ + reverb sutil de salida ───────────────────────────────────────────────
+// ── EQ + reverb de salida ─────────────────────────────────────────────────────
 let masterNode: AudioNode | null = null;
 
 const buildImpulse = (ctx: AudioContext): AudioBuffer => {
@@ -102,73 +101,57 @@ const getMaster = (): AudioNode => {
   if (masterNode) return masterNode;
   const ctx = getAudioContext();
 
-  // Sub-bajos cortados para evitar bombo
   const hp = ctx.createBiquadFilter();
-  hp.type = 'highpass';
-  hp.frequency.value = 80;
-  hp.Q.value = 0.7;
+  hp.type = 'highpass'; hp.frequency.value = 60; hp.Q.value = 0.7;
 
-  // Medios presentes: boost 1.5 kHz
-  const mids = ctx.createBiquadFilter();
-  mids.type = 'peaking';
-  mids.frequency.value = 1500;
-  mids.Q.value = 0.9;
-  mids.gain.value = 4;
+  // Calidez KS: boost cuerpo de la nota
+  const warmth = ctx.createBiquadFilter();
+  warmth.type = 'peaking'; warmth.frequency.value = 350; warmth.Q.value = 1.2; warmth.gain.value = 5;
 
-  // Compresor: cohesión y punch
+  // Presencia de ataque de cuerda
+  const presence = ctx.createBiquadFilter();
+  presence.type = 'peaking'; presence.frequency.value = 2500; presence.Q.value = 1.5; presence.gain.value = 2;
+
+  // Recortar brillos metálicos — carácter más cálido
+  const shelf = ctx.createBiquadFilter();
+  shelf.type = 'highshelf'; shelf.frequency.value = 6000; shelf.gain.value = -4;
+
   const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -20;
-  comp.knee.value = 8;
-  comp.ratio.value = 4;
-  comp.attack.value = 0.004;
-  comp.release.value = 0.18;
+  comp.threshold.value = -18; comp.knee.value = 10;
+  comp.ratio.value = 3.5; comp.attack.value = 0.006; comp.release.value = 0.22;
 
-  // Reverb 30%
   const convolver = ctx.createConvolver();
   convolver.buffer = buildImpulse(ctx);
 
   const reverbHp = ctx.createBiquadFilter();
-  reverbHp.type = 'highpass';
-  reverbHp.frequency.value = 150;
-  reverbHp.Q.value = 0.7;
+  reverbHp.type = 'highpass'; reverbHp.frequency.value = 120; reverbHp.Q.value = 0.7;
 
-  const wet = ctx.createGain();
-  wet.gain.value = 0.30;
+  const wet = ctx.createGain(); wet.gain.value = 0.38;
+  const dry = ctx.createGain(); dry.gain.value = 0.85;
+  const master = ctx.createGain(); master.gain.value = 0.80;
 
-  const dry = ctx.createGain();
-  dry.gain.value = 0.90;
-
-  const master = ctx.createGain();
-  master.gain.value = 0.82;
-
-  // hp → mids → comp → dry → master → out
-  //                  → convolver → reverbHp → wet → master → out
-  hp.connect(mids);
-  mids.connect(comp);
-  comp.connect(dry);
-  comp.connect(convolver);
-  convolver.connect(reverbHp);
-  reverbHp.connect(wet);
-  dry.connect(master);
-  wet.connect(master);
+  hp.connect(warmth); warmth.connect(presence); presence.connect(shelf); shelf.connect(comp);
+  comp.connect(dry); comp.connect(convolver);
+  convolver.connect(reverbHp); reverbHp.connect(wet);
+  dry.connect(master); wet.connect(master);
   master.connect(ctx.destination);
 
   masterNode = hp;
   return masterNode;
 };
 
-// ── Cadena práctica: EQ 3 bandas + delay (independiente del TikTok) ───────────
+// ── Cadena práctica: EQ 3 bandas + delay ─────────────────────────────────────
 interface PracticeNodes {
-  input:      AudioNode;
-  bass:       BiquadFilterNode;
-  mids:       BiquadFilterNode;
-  treble:     BiquadFilterNode;
-  delay:      DelayNode;
-  feedback:   GainNode;
-  delayWet:   GainNode;
-  delayDry:   GainNode;
-  reverbWet:  GainNode;
-  reverbDry:  GainNode;
+  input:     AudioNode;
+  bass:      BiquadFilterNode;
+  mids:      BiquadFilterNode;
+  treble:    BiquadFilterNode;
+  delay:     DelayNode;
+  feedback:  GainNode;
+  delayWet:  GainNode;
+  delayDry:  GainNode;
+  reverbWet: GainNode;
+  reverbDry: GainNode;
 }
 let practiceChain: PracticeNodes | null = null;
 let practiceMode = false;
@@ -195,49 +178,30 @@ const getPracticeChain = (): PracticeNodes => {
   comp.threshold.value = -20; comp.knee.value = 8;
   comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.18;
 
-  // Delay: nodo central + feedback loop
   const delayNode = ctx.createDelay(1.0);
   delayNode.delayTime.value = 0.30;
 
-  const feedback = ctx.createGain();
-  feedback.gain.value = 0;
+  const feedback = ctx.createGain(); feedback.gain.value = 0;
+  const delayWet = ctx.createGain(); delayWet.gain.value = 0;
+  const delayDry = ctx.createGain(); delayDry.gain.value = 1;
 
-  const delayWet = ctx.createGain();
-  delayWet.gain.value = 0;
-
-  const delayDry = ctx.createGain();
-  delayDry.gain.value = 1;
-
-  // Reverb
   const convolver = ctx.createConvolver();
   convolver.buffer = buildImpulse(ctx);
 
   const reverbHp = ctx.createBiquadFilter();
   reverbHp.type = 'highpass'; reverbHp.frequency.value = 150; reverbHp.Q.value = 0.7;
 
-  const reverbWet = ctx.createGain();
-  reverbWet.gain.value = 0;
+  const reverbWet = ctx.createGain(); reverbWet.gain.value = 0;
+  const reverbDry = ctx.createGain(); reverbDry.gain.value = 1;
 
-  const reverbDry = ctx.createGain();
-  reverbDry.gain.value = 1;
+  const master = ctx.createGain(); master.gain.value = 0.85;
 
-  const master = ctx.createGain();
-  master.gain.value = 0.85;
-
-  // Cadena: hp → bass → mids → treble → comp → delayDry ─┐
-  //                                          → delayNode → delayWet ─┤
-  //                                   delay feedback loop             ├→ reverbDry → master → out
-  //                                                                   └→ convolver → reverbHp → reverbWet → master
   hp.connect(bass); bass.connect(mids); mids.connect(treble); treble.connect(comp);
-  comp.connect(delayDry);
-  comp.connect(delayNode);
-  delayNode.connect(feedback); feedback.connect(delayNode);
-  delayNode.connect(delayWet);
+  comp.connect(delayDry); comp.connect(delayNode);
+  delayNode.connect(feedback); feedback.connect(delayNode); delayNode.connect(delayWet);
   delayDry.connect(reverbDry); delayWet.connect(reverbDry);
-  reverbDry.connect(master);
-  reverbDry.connect(convolver);
-  convolver.connect(reverbHp); reverbHp.connect(reverbWet);
-  reverbWet.connect(master);
+  reverbDry.connect(master); reverbDry.connect(convolver);
+  convolver.connect(reverbHp); reverbHp.connect(reverbWet); reverbWet.connect(master);
   master.connect(ctx.destination);
 
   practiceChain = { input: hp, bass, mids, treble, delay: delayNode, feedback, delayWet, delayDry, reverbWet, reverbDry };
@@ -264,8 +228,8 @@ export const setPracticeReverb = (wetPct: number) => {
   c.reverbDry.gain.value = 1 - v * 0.35;
 };
 
-// ── Decay por cuerda: graves duran más (inspirado en Karplus-Strong) ──────────
-const STRING_DECAY = [2.2, 1.9, 1.6, 1.4, 1.2, 1.0];
+// ── Decay por cuerda — duración larga estilo KS/nylon ────────────────────────
+const STRING_DECAY = [4.5, 4.0, 3.5, 3.0, 2.5, 2.0];
 
 // ── Notas activas ─────────────────────────────────────────────────────────────
 interface ActiveNote { gain: GainNode }
@@ -285,7 +249,7 @@ const muteActive = (ms = 40) => {
   activeNotes.length = 0;
 };
 
-// ── Reproducir una cuerda (síncrono — buffer ya está en memoria) ──────────────
+// ── Reproducir una cuerda ─────────────────────────────────────────────────────
 const STRING_BASE_MIDI = [40, 45, 50, 55, 59, 64];
 
 const playString = (
@@ -298,7 +262,7 @@ const playString = (
   const dest       = practiceMode ? getPracticeChain().input : getMaster();
   const targetMidi = STRING_BASE_MIDI[stringIndex] + fretNum;
   const result     = getBuffer(targetMidi);
-  if (!result) return; // samples aún no cargados
+  if (!result) return;
   const { buffer, baseMidi } = result;
 
   const source = ctx.createBufferSource();
@@ -317,13 +281,12 @@ const playString = (
     const idx = activeNotes.indexOf(note);
     if (idx !== -1) activeNotes.splice(idx, 1);
   };
-  // Si startTime ya pasó, toca de inmediato
   source.start(Math.max(startTime, ctx.currentTime));
 };
 
 // ── API pública ────────────────────────────────────────────────────────────────
 export const preloadChord = (_frets: (number | 'x' | 'o')[]) => {
-  preloadBaseSamples(); // no-op si ya están listos
+  preloadBaseSamples();
 };
 
 export const playChordAudio = (frets: (number | 'x' | 'o')[]) => {
@@ -362,7 +325,6 @@ export const ensureAudio = async (): Promise<void> => {
   if (ctx.state !== 'running') {
     try { await ctx.resume(); } catch (_) {}
   }
-  // Recargar samples si no se cargaron (puede pasar si el contexto estaba suspendido)
   if (bufferMap.size === 0) {
     samplesReady = false;
     await preloadBaseSamples();
