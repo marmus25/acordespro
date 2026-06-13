@@ -76,8 +76,8 @@ const OUR_SUFFIX_TO_DB: Record<string, string> = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function lookupChordFromDB(root: string, suffix: string): ChordShape | null {
   try {
-    const dbKey  = SHARP_TO_DB_KEY[root] ?? root;
-    const dbSfx  = OUR_SUFFIX_TO_DB[suffix];
+    const dbKey = SHARP_TO_DB_KEY[root] ?? root;
+    const dbSfx = OUR_SUFFIX_TO_DB[suffix];
     if (!dbSfx) return null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const list: any[] = (guitarDb as any).chords[dbKey];
@@ -87,22 +87,27 @@ function lookupChordFromDB(root: string, suffix: string): ChordShape | null {
     if (!entry?.positions?.length) return null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pos: any = entry.positions[0];
-    // Detectar cejilla
+    const baseFret: number = pos.baseFret ?? 1;
+    const relFrets: number[] = pos.frets as number[];
+
+    // La DB guarda trastes RELATIVOS (1 = primer traste del diagrama).
+    // El renderer espera trastes ABSOLUTOS (fret 1 = cejuela).
+    // Conversión: absoluto = relativo > 0 ? relativo + baseFret - 1 : relativo
+    const absFrets = relFrets.map(f => (f > 0 ? f + baseFret - 1 : f));
+
+    // Detectar cejilla usando los trastes RELATIVOS (antes de convertir),
+    // luego almacenar el traste de la cejilla como ABSOLUTO.
     let barre: ChordShape['barre'];
     if (pos.barres?.length) {
-      const bf = pos.barres[0];
-      const indices = (pos.frets as number[])
+      const bf = pos.barres[0]; // relativo
+      const indices = relFrets
         .map((f, i) => (f === bf ? i : -1))
         .filter(i => i >= 0);
       if (indices.length >= 2)
-        barre = { fret: bf + (pos.baseFret ?? 1) - 1, from: indices[0], to: indices[indices.length - 1] };
+        barre = { fret: bf + baseFret - 1, from: indices[0], to: indices[indices.length - 1] };
     }
-    return {
-      frets:    pos.frets as number[],
-      baseFret: pos.baseFret ?? 1,
-      barre,
-      fingers:  pos.fingers as number[],
-    };
+
+    return { frets: absFrets, baseFret, barre, fingers: pos.fingers as number[] };
   } catch { return null; }
 }
 
