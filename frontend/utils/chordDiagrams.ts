@@ -60,7 +60,7 @@ function normalizeRoot(root: string): string {
 // ── Lookup desde @tombatossals/chords-db ──────────────────────────────────────
 // Nuestros sharps → claves que usa la DB
 const SHARP_TO_DB_KEY: Record<string, string> = {
-  'D#': 'Eb', 'G#': 'Ab', 'A#': 'Bb',
+  'C#': 'Csharp', 'D#': 'Eb', 'F#': 'Fsharp', 'G#': 'Ab', 'A#': 'Bb',
 };
 
 // Sufijo canónico nuestro → sufijo en la DB
