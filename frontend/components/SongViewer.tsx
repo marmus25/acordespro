@@ -1540,17 +1540,15 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                     <PracticePanel
                       activeChord={practiceChord ?? nextChord}
                       chordShape={(practiceChord ?? nextChord) ? chordShapeMap.get(practiceChord ?? nextChord ?? '') ?? null : null}
-                      onClose={() => {}}
-                      hideClose
-                      hidePresets
+                      onClose={() => { setShowPracticeMode(false); setPracticeChord(null); chordCursorRef.current = -1; }}
                       variant="dark"
-                      noDiagram
                       autoStart={autoScroll}
                       onNextChord={handleNextChord}
                       onPlayChange={handlePracticePlayChange}
                       onRestart={handleRestartPractice}
                       sharedTs={practiceTs}
                       sharedPresetIdx={practicePresetIdx}
+                      onPresetChange={(ts, idx) => { setPracticeTs(ts); setPracticePresetIdx(idx); }}
                     />
                   )}
                 </div>
