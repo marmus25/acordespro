@@ -44,3 +44,32 @@ npm-debug.log*
 *.zip
 *.rar
 *.7z
+
+# Keystores de firma Android (¡NUNCA subir a git!)
+*.jks
+*.keystore
+
+# Muestras de audio (archivos grandes)
+frontend/public/samples/
+DSK Guitars Nylon/
+
+# Imágenes sueltas en el directorio raíz (capturas, bocetos)
+/*.jpg
+/*.jpeg
+/*.png
+/*.PNG
+/*.gif
+/*.webp
+
+# Archivos PDF sueltos en raíz
+/*.pdf
+
+# Scripts de verificación temporales
+verify_*.mjs
+
+# Carpetas de trabajo temporales
+CHORDPLAY/
+
+# Archivos de salida de build
+build_out.txt
+*.bat
