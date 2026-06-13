@@ -8,12 +8,48 @@ const getAudioContext = () => {
   return audioCtx;
 };
 
-// ── 3 samples base (E2, E3, E4) cargados al inicio ────────────────────────────
-// Toda nota se transpone desde el más cercano — máx ±6 semitonos, nunca falla
+// ── Muestras reales por nota — máx ±1 semitono de pitch shift ────────────────
 const BASE_SAMPLES: { midi: number; file: string }[] = [
-  { midi: 40, file: '/samples/iSGtr_E2_f.wav' },
-  { midi: 52, file: '/samples/iSGtr_E3_f.wav' },
-  { midi: 64, file: '/samples/iSGtr_E4_f.wav' },
+  // Octava 2
+  { midi: 40, file: '/samples/iSGtr_E2_f.wav'  },
+  { midi: 41, file: '/samples/iSGtr_F2_f.wav'  },
+  { midi: 42, file: '/samples/iSGtr_F#2_f.wav' },
+  { midi: 43, file: '/samples/iSGtr_G2_f.wav'  },
+  { midi: 44, file: '/samples/iSGtr_G#2_f.wav' },
+  { midi: 45, file: '/samples/iSGtr_A2_f.wav'  },
+  { midi: 46, file: '/samples/iSGtr_A#2_f.wav' },
+  { midi: 47, file: '/samples/iSGtr_B2_f.wav'  },
+  // Octava 3
+  { midi: 48, file: '/samples/iSGtr_C3_f.wav'  },
+  { midi: 50, file: '/samples/iSGtr_D3_f.wav'  },
+  { midi: 51, file: '/samples/iSGtr_D#3_f.wav' },
+  { midi: 52, file: '/samples/iSGtr_E3_f.wav'  },
+  { midi: 53, file: '/samples/iSGtr_F3_f.wav'  },
+  { midi: 54, file: '/samples/iSGtr_F#3_f.wav' },
+  { midi: 55, file: '/samples/iSGtr_G3_f.wav'  },
+  { midi: 56, file: '/samples/iSGtr_G#3_f.wav' },
+  { midi: 57, file: '/samples/iSGtr_A3_f.wav'  },
+  { midi: 58, file: '/samples/iSGtr_A#3_f.wav' },
+  { midi: 59, file: '/samples/iSGtr_B3_f.wav'  },
+  // Octava 4
+  { midi: 60, file: '/samples/iSGtr_C4_f.wav'  },
+  { midi: 61, file: '/samples/iSGtr_C#4_f.wav' },
+  { midi: 62, file: '/samples/iSGtr_D4_f.wav'  },
+  { midi: 63, file: '/samples/iSGtr_D#4_f.wav' },
+  { midi: 64, file: '/samples/iSGtr_E4_f.wav'  },
+  { midi: 65, file: '/samples/iSGtr_F4_f.wav'  },
+  { midi: 66, file: '/samples/iSGtr_F#4_f.wav' },
+  { midi: 67, file: '/samples/iSGtr_G4_f.wav'  },
+  { midi: 68, file: '/samples/iSGtr_G#4_f.wav' },
+  { midi: 69, file: '/samples/iSGtr_A4_f.wav'  },
+  { midi: 70, file: '/samples/iSGtr_A#4_f.wav' },
+  { midi: 71, file: '/samples/iSGtr_B4_f.wav'  },
+  // Octava 5
+  { midi: 74, file: '/samples/iSGtr_D5_f.wav'  },
+  { midi: 75, file: '/samples/iSGtr_D#5_f.wav' },
+  { midi: 76, file: '/samples/iSGtr_E5_f.wav'  },
+  { midi: 79, file: '/samples/iSGtr_G5_f.wav'  },
+  { midi: 80, file: '/samples/iSGtr_G#5_f.wav' },
 ];
 
 const bufferMap: Map<number, AudioBuffer> = new Map();
