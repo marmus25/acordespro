@@ -8,8 +8,12 @@ const getAudioContext = () => {
   return audioCtx;
 };
 
-// ── 36 samples reales por nota — máx ±1 semitono de pitch shift ───────────────
-const BASE_SAMPLES: { midi: number; file: string }[] = [
+// ── Capas de velocidad: forte (_f), piano (_p) y hammer (_h) ─────────────────
+// Selección automática por volumen → máxima expresividad y realismo
+
+type SampleLayer = { midi: number; file: string };
+
+const SAMPLES_F: SampleLayer[] = [
   // Octava 2
   { midi: 40, file: '/samples/iSGtr_E2_f.wav'  },
   { midi: 41, file: '/samples/iSGtr_F2_f.wav'  },
@@ -52,35 +56,105 @@ const BASE_SAMPLES: { midi: number; file: string }[] = [
   { midi: 80, file: '/samples/iSGtr_G#5_f.wav' },
 ];
 
-const bufferMap: Map<number, AudioBuffer> = new Map();
+const SAMPLES_P: SampleLayer[] = [
+  { midi: 40, file: '/samples/iSGtr_E2_p.wav'  },
+  { midi: 41, file: '/samples/iSGtr_F2_p.wav'  },
+  { midi: 42, file: '/samples/iSGtr_F#2_p.wav' },
+  { midi: 43, file: '/samples/iSGtr_G2_p.wav'  },
+  { midi: 44, file: '/samples/iSGtr_G#2_p.wav' },
+  { midi: 45, file: '/samples/iSGtr_A2_p.wav'  },
+  { midi: 46, file: '/samples/iSGtr_A#2_p.wav' },
+  { midi: 47, file: '/samples/iSGtr_B2_p.wav'  },
+  { midi: 48, file: '/samples/iSGtr_C3_p.wav'  },
+  { midi: 49, file: '/samples/iSGtr_C#3_p.wav' }, // solo existe en _p
+  { midi: 50, file: '/samples/iSGtr_D3_p.wav'  },
+  { midi: 51, file: '/samples/iSGtr_D#3_p.wav' },
+  { midi: 52, file: '/samples/iSGtr_E3_p.wav'  },
+  { midi: 53, file: '/samples/iSGtr_F3_p.wav'  },
+  { midi: 54, file: '/samples/iSGtr_F#3_p.wav' },
+  { midi: 55, file: '/samples/iSGtr_G3_p.wav'  },
+  { midi: 56, file: '/samples/iSGtr_G#3_p.wav' },
+  { midi: 57, file: '/samples/iSGtr_A3_p.wav'  },
+  { midi: 58, file: '/samples/iSGtr_A#3_p.wav' },
+  { midi: 59, file: '/samples/iSGtr_B3_p.wav'  },
+  { midi: 60, file: '/samples/iSGtr_C4_p.wav'  },
+  { midi: 62, file: '/samples/iSGtr_D4_p.wav'  },
+  { midi: 63, file: '/samples/iSGtr_D#4_p.wav' },
+  { midi: 64, file: '/samples/iSGtr_E4_p.wav'  },
+  { midi: 65, file: '/samples/iSGtr_F4_p.wav'  },
+  { midi: 66, file: '/samples/iSGtr_F#4_p.wav' },
+  { midi: 67, file: '/samples/iSGtr_G4_p.wav'  },
+  { midi: 68, file: '/samples/iSGtr_G#4_p.wav' },
+  { midi: 69, file: '/samples/iSGtr_A4_p.wav'  },
+  { midi: 70, file: '/samples/iSGtr_A#4_p.wav' },
+  { midi: 71, file: '/samples/iSGtr_B4_p.wav'  },
+  { midi: 74, file: '/samples/iSGtr_D5_p.wav'  },
+  { midi: 75, file: '/samples/iSGtr_D#5_p.wav' },
+  { midi: 76, file: '/samples/iSGtr_E5_p.wav'  },
+];
+
+// Hammer-on: ataque más percusivo en registro medio-alto
+const SAMPLES_H: SampleLayer[] = [
+  { midi: 52, file: '/samples/iSGtr_E3h_f.wav' },
+  { midi: 57, file: '/samples/iSGtr_A3h_f.wav' },
+  { midi: 62, file: '/samples/iSGtr_D4h_f.wav' },
+  { midi: 64, file: '/samples/iSGtr_E4h_f.wav' },
+  { midi: 67, file: '/samples/iSGtr_G4h_f.wav' },
+  { midi: 69, file: '/samples/iSGtr_A4h_f.wav' },
+  { midi: 71, file: '/samples/iSGtr_B4h_f.wav' },
+  { midi: 74, file: '/samples/iSGtr_D5h_f.wav' },
+  { midi: 76, file: '/samples/iSGtr_E5h_f.wav' },
+  { midi: 79, file: '/samples/iSGtr_G5h_f.wav' },
+  { midi: 83, file: '/samples/iSGtr_B5h_f.wav' },
+];
+
+const bufferF: Map<number, AudioBuffer> = new Map();
+const bufferP: Map<number, AudioBuffer> = new Map();
+const bufferH: Map<number, AudioBuffer> = new Map();
 let samplesReady = false;
+
+const loadLayer = async (ctx: AudioContext, list: SampleLayer[], map: Map<number, AudioBuffer>) => {
+  await Promise.all(list.map(async ({ midi, file }) => {
+    try {
+      const res = await fetch(file);
+      if (!res.ok) return;
+      const buf = await ctx.decodeAudioData(await res.arrayBuffer());
+      map.set(midi, buf);
+    } catch (_) {}
+  }));
+};
 
 const preloadBaseSamples = async () => {
   if (samplesReady) return;
   const ctx = getAudioContext();
-  await Promise.all(
-    BASE_SAMPLES.map(async ({ midi, file }) => {
-      try {
-        const res = await fetch(file);
-        if (!res.ok) return;
-        const raw = await res.arrayBuffer();
-        const buf = await ctx.decodeAudioData(raw);
-        bufferMap.set(midi, buf);
-      } catch (_) {}
-    })
-  );
+  await Promise.all([
+    loadLayer(ctx, SAMPLES_F, bufferF),
+    loadLayer(ctx, SAMPLES_P, bufferP),
+    loadLayer(ctx, SAMPLES_H, bufferH),
+  ]);
   samplesReady = true;
 };
 
 preloadBaseSamples();
 
-const getBuffer = (targetMidi: number): { buffer: AudioBuffer; baseMidi: number } | null => {
-  const entries = Array.from(bufferMap.entries());
+const nearest = (map: Map<number, AudioBuffer>, midi: number): { buffer: AudioBuffer; baseMidi: number } | null => {
+  const entries = Array.from(map.entries());
   if (entries.length === 0) return null;
   const [baseMidi, buffer] = entries.reduce((best, cur) =>
-    Math.abs(cur[0] - targetMidi) < Math.abs(best[0] - targetMidi) ? cur : best
+    Math.abs(cur[0] - midi) < Math.abs(best[0] - midi) ? cur : best
   );
   return { buffer, baseMidi };
+};
+
+// vol >= 0.78 → forte | 0.55–0.77 → piano | cuerdas altas rasgueo fuerte → hammer
+const getBuffer = (targetMidi: number, vol: number, stringIdx: number): { buffer: AudioBuffer; baseMidi: number } | null => {
+  // Cuerdas agudas (3-5) en rasgueos fuertes usan hammer para más mordida
+  if (stringIdx >= 3 && vol >= 0.80 && bufferH.size > 0) {
+    const h = nearest(bufferH, targetMidi);
+    if (h && Math.abs(h.baseMidi - targetMidi) <= 3) return h;
+  }
+  if (vol >= 0.68) return nearest(bufferF, targetMidi) ?? nearest(bufferP, targetMidi);
+  return nearest(bufferP, targetMidi) ?? nearest(bufferF, targetMidi);
 };
 
 // ── EQ + reverb de salida ─────────────────────────────────────────────────────
@@ -261,7 +335,7 @@ const playString = (
   const ctx        = getAudioContext();
   const dest       = practiceMode ? getPracticeChain().input : getMaster();
   const targetMidi = STRING_BASE_MIDI[stringIndex] + fretNum;
-  const result     = getBuffer(targetMidi);
+  const result     = getBuffer(targetMidi, vol, stringIndex);
   if (!result) return;
   const { buffer, baseMidi } = result;
 
@@ -325,7 +399,7 @@ export const ensureAudio = async (): Promise<void> => {
   if (ctx.state !== 'running') {
     try { await ctx.resume(); } catch (_) {}
   }
-  if (bufferMap.size === 0) {
+  if (bufferF.size === 0) {
     samplesReady = false;
     await preloadBaseSamples();
   }
