@@ -116,40 +116,33 @@ export function lookupChord(name: string): ChordShape | null {
   // Slash chord: buscar primero el nombre exacto, luego stripear el bajo
   const slashIdx = name.indexOf('/');
   if (slashIdx >= 0) {
-    // 1. Búsqueda exacta (Cm/Bb → busca 'Cm/Bb')
     if (CHORDS[name]) return CHORDS[name];
-    // 2. Normalizar el bajo (Cm/Bb → Cm/A#) y buscar
-    const bassRaw = name.slice(slashIdx + 1);
+    const bassRaw  = name.slice(slashIdx + 1);
     const bassSharp = FLAT_TO_SHARP[bassRaw] ?? bassRaw;
     const nameSharp = name.slice(0, slashIdx) + '/' + bassSharp;
     if (CHORDS[nameSharp]) return CHORDS[nameSharp];
   }
   const baseName = slashIdx >= 0 ? name.slice(0, slashIdx) : name;
-  // Normalizar notaciones alternativas: Am7(5-) → Am7b5, G7(9+) → G7#9
   const normalized = baseName
     .replace(/\((\d+)-\)/g, 'b$1')
     .replace(/\((\d+)\+\)/g, '#$1')
     .replace(/\(b(\d+)\)/g, 'b$1')
     .replace(/\(#(\d+)\)/g, '#$1')
     .replace(/\(([^)]+)\)/g, '$1');
-  // Parse root + suffix
   const match = normalized.match(/^([A-G][#b]?)(.*)$/);
   if (!match) return null;
   const [, rawRoot, rawSuffix] = match;
-  const root = normalizeRoot(rawRoot);
+  const root   = normalizeRoot(rawRoot);
   const suffix = normalizeSuffix(rawSuffix.trim());
-  const key = root + suffix;
+  const key    = root + suffix;
 
-  // Intentar DB profesional primero (tiene fingers para mostrar numeración)
-  const fromDB = lookupChordFromDB(root, suffix);
-  if (fromDB) return fromDB;
-
-  // Fallback: diccionario interno
+  // 1. Diccionario curado primero — posiciones universales verificadas
   if (CHORDS[key]) return CHORDS[key];
   const keyOrig = root + rawSuffix;
   if (CHORDS[keyOrig]) return CHORDS[keyOrig];
 
-  return null;
+  // 2. DB como fallback para acordes no cubiertos (add9, sus, dim7, m7b5…)
+  return lookupChordFromDB(root, suffix);
 }
 
 const CHORDS: Record<string, ChordShape> = {
