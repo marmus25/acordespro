@@ -72,14 +72,18 @@ export async function verifyLicense(): Promise<boolean> {
   const local = getLocalLicense();
   if (!local) return false;
 
-  // Verificar que la licencia sigue activa en Supabase
-  const { data } = await supabase
-    .from('licenses')
-    .select('active, device_id')
-    .eq('email', local.email)
-    .single();
+  try {
+    const { data } = await supabase
+      .from('licenses')
+      .select('active, device_id')
+      .eq('email', local.email)
+      .single();
 
-  return !!(data?.active && data.device_id === local.deviceId);
+    return !!(data?.active && data.device_id === local.deviceId);
+  } catch {
+    // Sin red: confiar en la licencia local para no bloquear al usuario
+    return true;
+  }
 }
 
 export function clearLocalLicense() {

@@ -1,6 +1,7 @@
 import Groq from 'groq-sdk';
 import * as pdfjsLib from 'pdfjs-dist';
 import { SongData } from '../types';
+import { preprocessChordSheet } from './chordParser';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
@@ -13,18 +14,52 @@ const groq = new Groq({
 });
 
 const systemInstruction = `Eres un músico experto y transcriptor.
-Tu tarea es extraer letras y acordes de canciones a partir de imágenes o búsquedas de texto.
-Debes responder SOLO con un JSON válido, sin texto adicional ni markdown, con esta estructura exacta:
+Tu tarea es extraer letras y acordes de canciones a partir de texto, imágenes o búsquedas.
+
+REGLA CRÍTICA ANTI-ALUCINACIÓN:
+Si NO conoces con certeza la letra COMPLETA y los acordes REALES de la canción pedida, responde ÚNICAMENTE con:
+{"error": "No encontré acordes verificados para esta canción. Buscala en Cifraclub o Ultimate Guitar y pegá la letra aquí."}
+NUNCA inventes letras. NUNCA inventes acordes. Es preferible devolver error que inventar.
+
+Si SÍ conoces la canción con certeza, responde SOLO con un JSON válido, sin texto adicional ni markdown:
 {
   "title": "título de la canción",
   "artist": "artista o banda",
   "originalKey": "tono original (ej. C, G, Am)",
   "lines": ["líneas de la canción..."]
 }
-REGLA MÁS IMPORTANTE: Usa el formato estilo ChordPro para las líneas.
-Incrusta los acordes directamente en el texto usando corchetes '[' y ']' justo antes de la palabra o sílaba donde ocurre el cambio de acorde.
-Ejemplo correcto: "Y [C]ahora que no [G]estás, [Am]todo es tan [F]distinto."
-Ejemplo de intro sin letra: "[C]  [G]  [Am]  [F]"`;
+Usa formato ChordPro: incrusta los acordes con corchetes '[' y ']' justo antes de la sílaba donde ocurre el cambio.
+Ejemplo: "[C]Quiero [G]decirte que [Am]te a[F]mo"
+Línea instrumental: "[C]  [G]  [Am]  [F]"
+Si hay secciones (Verso, Coro, Puente), agrégalas como líneas de texto sin corchetes.`;
+
+const SCRAPER_URL = 'http://localhost:5001';
+
+// Intenta buscar con el scraper local (Cifraclub). Lanza error si no está disponible.
+export const searchWithScraper = async (query: string): Promise<SongData> => {
+  const res = await fetch(`${SCRAPER_URL}/scraper-proxy/find?q=${encodeURIComponent(query)}`, {
+    signal: AbortSignal.timeout(60000),
+  });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Error del scraper');
+
+  const song = json.song as SongData;
+  // Convierte formato tradicional (acordes encima) a ChordPro inline ([Acorde]letra)
+  const processed = preprocessChordSheet(song.lines.join('\n'));
+  return { ...song, lines: processed.split('\n') };
+};
+
+// Verifica si el servidor scraper está corriendo
+export const scraperAvailable = async (): Promise<boolean> => {
+  try {
+    const res = await fetch(`${SCRAPER_URL}/scraper-proxy/ping`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+};
 
 export const searchSongText = async (query: string): Promise<SongData> => {
   const response = await groq.chat.completions.create({
@@ -34,12 +69,15 @@ export const searchSongText = async (query: string): Promise<SongData> => {
       { role: 'user', content: `Busca la letra y acordes de la canción: ${query}` }
     ],
     response_format: { type: 'json_object' },
-    temperature: 0.2,
+    temperature: 0.1,
   });
 
   const text = response.choices[0]?.message?.content;
-  if (!text) throw new Error("No se recibió respuesta del modelo.");
-  return JSON.parse(text) as SongData;
+  if (!text) throw new Error('No se recibió respuesta del modelo.');
+
+  const parsed = JSON.parse(text) as SongData & { error?: string };
+  if (parsed.error) throw new Error(parsed.error);
+  return parsed;
 };
 
 const extractTextFromPdf = async (base64Data: string): Promise<string> => {
@@ -82,22 +120,19 @@ export const processSongFile = async (mimeType: string, base64Data: string): Pro
   });
 
   const text = response.choices[0]?.message?.content;
-  if (!text) throw new Error("No se pudo procesar el archivo.");
+  if (!text) throw new Error('No se pudo procesar el archivo.');
   return JSON.parse(text) as SongData;
 };
 
-export const fileToBase64 = (file: File): Promise<{ mimeType: string, data: string }> => {
+export const fileToBase64 = (file: File): Promise<{ mimeType: string; data: string }> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => {
       const result = reader.result as string;
       const match = result.match(/^data:(.*?);base64,(.*)$/);
-      if (match) {
-        resolve({ mimeType: match[1], data: match[2] });
-      } else {
-        reject(new Error("Error al leer el archivo"));
-      }
+      if (match) resolve({ mimeType: match[1], data: match[2] });
+      else reject(new Error('Error al leer el archivo'));
     };
     reader.onerror = error => reject(error);
   });

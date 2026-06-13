@@ -1,9 +1,21 @@
+export interface PracticeSettings {
+  bpm: number;
+  eqBass: number;
+  eqMids: number;
+  eqTreble: number;
+  delayTime: number;
+  delayFeedback: number;
+  delayWet: number;
+  reverb: number;
+}
+
 export interface SongData {
   title: string;
   artist: string;
   originalKey: string;
   lines: string[];
   youtubeUrl?: string;
+  practiceSettings?: PracticeSettings;
 }
 
 export interface SavedSong extends SongData {

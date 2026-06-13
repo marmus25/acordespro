@@ -217,6 +217,16 @@ export const InlineChordIcon = ({ className = "w-6 h-6" }) => (
   </svg>
 );
 
+export const FloatingChordIcon = ({ className = "w-6 h-6" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    {/* Screen / viewport */}
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    {/* Large "A" representing chord name */}
+    <path d="M9 16l3-7 3 7" strokeWidth={2} />
+    <line x1="10.2" y1="13" x2="13.8" y2="13" strokeWidth={2} />
+  </svg>
+);
+
 export const PracticeModeIcon = ({ className = "w-6 h-6" }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className={className}>
     {/* Fretboard */}
@@ -232,5 +242,11 @@ export const PracticeModeIcon = ({ className = "w-6 h-6" }) => (
     <circle cx="14" cy="20" r="1.2" fill="currentColor" stroke="none" />
     <circle cx="18" cy="20" r="1.2" fill="currentColor" stroke="none" />
     <circle cx="22" cy="20" r="1.2" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+export const SingModeIcon = ({ className = "w-6 h-6" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
   </svg>
 );

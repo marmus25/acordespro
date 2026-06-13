@@ -29,7 +29,13 @@ const INTERVALS: Record<string, number[]> = {
 };
 
 export function getPianoNotes(chordName: string): number[] | null {
-  const withoutBass = chordName.split('/')[0];
+  const normalized = chordName
+    .replace(/\((\d+)-\)/g, 'b$1')
+    .replace(/\((\d+)\+\)/g, '#$1')
+    .replace(/\(b(\d+)\)/g, 'b$1')
+    .replace(/\(#(\d+)\)/g, '#$1')
+    .replace(/\(([^)]+)\)/g, '$1');
+  const withoutBass = normalized.split('/')[0];
   const match = withoutBass.match(/^([A-G][#b]?)(.*)$/);
   if (!match) return null;
   const [, root, quality] = match;

@@ -61,7 +61,7 @@ export const formatChordNotation = (chord: string, notation: 'english' | 'latin'
 };
 
 // Detecta si un token es un nombre de acorde válido (ej: Em, G, Am, C#m, Dm7, Bm/F#)
-const CHORD_TOKEN_RE = /^[A-G][#b]?(maj|min|m|M|dim|aug|sus[24]?|add\d+|[0-9]+)*(\/[A-G][#b]?)?$/;
+const CHORD_TOKEN_RE = /^[A-G][#b]?(maj|min|m|M|dim|aug|sus[24]?|add\d+|[0-9]+|[b#][0-9]+)*(\/[A-G][#b]?)?$/;
 const isChordToken = (t: string) => CHORD_TOKEN_RE.test(t);
 
 export const parseChordProLine = (line: string): import('../types').ParsedLine => {
