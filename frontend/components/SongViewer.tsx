@@ -1656,9 +1656,23 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                             : null
                         }
                         <div className="flex flex-col items-start shrink-0">
-                          <span className="font-black leading-none text-3xl" style={{ color: getChordColorTT(displayC) }}>
-                            {formatChordNotation(applyAccidental(displayC), notation)}
-                          </span>
+                          <div className="flex items-baseline gap-2">
+                            <span className="font-black leading-none text-3xl" style={{ color: getChordColorTT(displayC) }}>
+                              {formatChordNotation(applyAccidental(displayC), notation)}
+                            </span>
+                            {(() => {
+                              const sh = chordShapeMap.get(displayC);
+                              if (!sh || sh.baseFret <= 1) return null;
+                              return (
+                                <span
+                                  className="font-black leading-none text-xl px-2 py-0.5 rounded-lg"
+                                  style={{ background: getChordColorTT(displayC), color: '#000' }}
+                                >
+                                  {sh.baseFret}fr
+                                </span>
+                              );
+                            })()}
+                          </div>
                           {/* Selector de compases por acorde */}
                           {showPracticeMode && (
                             <div className="flex items-center gap-1 mt-1">
