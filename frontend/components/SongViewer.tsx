@@ -635,6 +635,20 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
   }, [ttChordMeasures, ttMeasuresKey]);
 
   const handleTranspose = (steps: number) => setTransposeSteps(prev => prev + steps);
+
+  // Devuelve una copia del song con todos los acordes transpuestos y originalKey actualizado
+  const bakeSongTranspose = useCallback((s: SongData, steps: number): SongData => {
+    if (steps === 0) return s;
+    const newLines = s.lines.map(line => {
+      const parsed = parseChordProLine(line);
+      return parsed.segments
+        .map(seg => (seg.chord ? `[${transposeChord(seg.chord, steps)}]` : '') + seg.text)
+        .join('');
+    });
+    const newKey = s.originalKey ? transposeChord(s.originalKey, steps) : s.originalKey;
+    return { ...s, lines: newLines, originalKey: newKey };
+  }, []);
+
   const handleZoom = (delta: number) => setFontSize(prev => Math.max(12, Math.min(prev + delta, 48)));
   const toggleNotation = () => setNotation(prev => prev === 'english' ? 'latin' : 'english');
 
@@ -979,12 +993,18 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
           {/* Save */}
           {!editMode && (
             <button
-              onClick={() => savedId ? onUpdate(song) : onSave(song)}
+              onClick={() => {
+                const toSave = bakeSongTranspose(song, transposeSteps);
+                if (savedId) onUpdate(toSave); else onSave(toSave);
+                if (transposeSteps !== 0) setTransposeSteps(0);
+              }}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors shadow-sm ${savedId ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-700 hover:bg-green-200 dark:hover:bg-green-900/50' : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'}`}
-              title={savedId ? 'Guardada' : 'Guardar en cancionero'}
+              title={savedId ? (transposeSteps !== 0 ? `Guardar en tono ${transposedKeyRaw}` : 'Guardada') : 'Guardar en cancionero'}
             >
               <SaveIcon className="w-5 h-5" />
-              <span className="hidden sm:inline font-medium text-sm">{savedId ? 'Guardada' : 'Guardar'}</span>
+              <span className="hidden sm:inline font-medium text-sm">
+                {savedId ? (transposeSteps !== 0 ? `Guardar (${transposedKeyRaw})` : 'Guardada') : 'Guardar'}
+              </span>
             </button>
           )}
 
