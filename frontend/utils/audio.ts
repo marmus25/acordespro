@@ -292,6 +292,12 @@ const playString = (stringIndex: number, fretNum: number, startTime: number, vol
   // Microafinación ±0.4% — cuerdas nunca perfectamente afinadas entre sí
   source.playbackRate.value = Math.pow(2, (midi - baseMidi) / 12) * (1 + (Math.random() - 0.5) * 0.008);
 
+  // Loop de la cola: ataque natural → repetir el último 30% del sample
+  // El gain envelope es quien corta — nunca el final del buffer (evita staccato)
+  source.loop      = true;
+  source.loopStart = buffer.duration * 0.70;
+  source.loopEnd   = buffer.duration;
+
   const decay  = STRING_DECAY[stringIndex] ?? 1.0;
   const attack = 0.006 + stringIndex * 0.001; // graves un poco más lentos
   gain.gain.setValueAtTime(0.001, startTime);
@@ -303,7 +309,11 @@ const playString = (stringIndex: number, fretNum: number, startTime: number, vol
   const note: ActiveNote = { gain };
   activeNotes.push(note);
   source.onended = () => { const i = activeNotes.indexOf(note); if (i !== -1) activeNotes.splice(i, 1); };
-  source.start(Math.max(startTime, ctx.currentTime));
+
+  const t0   = Math.max(startTime, ctx.currentTime);
+  const tEnd = t0 + attack + decay + 0.05; // parar el loop justo después del fadeout
+  source.start(t0);
+  source.stop(tEnd);
 };
 
 // ── Humanización: simula mano de guitarrista real ─────────────────────────────
