@@ -380,18 +380,125 @@ const playString = (
   source.start(Math.max(startTime, ctx.currentTime));
 };
 
-// ── API pública ────────────────────────────────────────────────────────────────
-export const preloadChord = (_frets: (number | 'x' | 'o')[]) => {
-  preloadBaseSamples();
-};
+// ── Pre-renderizado de acordes (OfflineAudioContext) ─────────────────────────
+// Mezcla todas las cuerdas + efectos en un único buffer estéreo → sonido cohesivo
+const chordCache = new Map<string, AudioBuffer>();
 
-export const playChordAudio = (frets: (number | 'x' | 'o')[]) => {
-  const ctx = getAudioContext();
-  const now = ctx.currentTime;
+function buildOfflineChain(offCtx: OfflineAudioContext): AudioNode {
+  const hp = offCtx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 80; hp.Q.value = 0.7;
+
+  const cut250 = offCtx.createBiquadFilter();
+  cut250.type = 'peaking'; cut250.frequency.value = 250; cut250.Q.value = 1.4; cut250.gain.value = -4;
+
+  const body = offCtx.createBiquadFilter();
+  body.type = 'peaking'; body.frequency.value = 900; body.Q.value = 1.2; body.gain.value = 2;
+
+  const presence = offCtx.createBiquadFilter();
+  presence.type = 'peaking'; presence.frequency.value = 2800; presence.Q.value = 1.3; presence.gain.value = 4;
+
+  const cut5k = offCtx.createBiquadFilter();
+  cut5k.type = 'peaking'; cut5k.frequency.value = 5000; cut5k.Q.value = 1.0; cut5k.gain.value = -3;
+
+  const air = offCtx.createBiquadFilter();
+  air.type = 'highshelf'; air.frequency.value = 9000; air.gain.value = 3;
+
+  const comp = offCtx.createDynamicsCompressor();
+  comp.threshold.value = -20; comp.knee.value = 10;
+  comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.25;
+
+  // Reverb usando impulso simplificado
+  const irLen = Math.floor(offCtx.sampleRate * 1.2);
+  const ir    = offCtx.createBuffer(2, irLen, offCtx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    for (let i = 0; i < irLen; i++)
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLen, 3);
+  }
+  const conv = offCtx.createConvolver(); conv.buffer = ir;
+  const revHp = offCtx.createBiquadFilter();
+  revHp.type = 'highpass'; revHp.frequency.value = 160; revHp.Q.value = 0.7;
+
+  // Chorus offline: delay fijo (sin LFO, no hay tiempo real)
+  const cDel = offCtx.createDelay(0.05); cDel.delayTime.value = 0.011;
+  const cGain = offCtx.createGain(); cGain.gain.value = 0.16;
+
+  const wet = offCtx.createGain(); wet.gain.value = 0.30;
+  const dry = offCtx.createGain(); dry.gain.value = 0.90;
+  const master = offCtx.createGain(); master.gain.value = 0.82;
+
+  hp.connect(cut250); cut250.connect(body); body.connect(presence);
+  presence.connect(cut5k); cut5k.connect(air); air.connect(comp);
+  comp.connect(dry);
+  comp.connect(cDel); cDel.connect(cGain); cGain.connect(master);
+  comp.connect(conv); conv.connect(revHp); revHp.connect(wet);
+  dry.connect(master); wet.connect(master);
+  master.connect(offCtx.destination);
+
+  return hp;
+}
+
+async function renderChord(frets: (number | 'x' | 'o')[]): Promise<AudioBuffer> {
+  const key = frets.join(',');
+  if (chordCache.has(key)) return chordCache.get(key)!;
+
+  const sr       = 44100;
+  const duration = 3.0;
+  const offCtx   = new OfflineAudioContext(2, Math.round(sr * duration), sr);
+  const dest     = buildOfflineChain(offCtx);
+
+  // Tocar cada cuerda con humanización completa
   frets.forEach((fret, si) => {
     if (fret === 'x') return;
-    playString(si, fret === 'o' ? 0 : (fret as number), now + si * 0.04, 0.72);
+    const fn         = fret === 'o' ? 0 : (fret as number);
+    const midi       = STRING_BASE_MIDI[si] + fn;
+    const result     = getBuffer(midi, 0.82);
+    if (!result) return;
+    const { buffer, baseMidi } = result;
+
+    const src  = offCtx.createBufferSource();
+    const gain = offCtx.createGain();
+    src.buffer = buffer;
+
+    // Microafinación y pitch
+    const ratio = Math.pow(2, (midi - baseMidi) / 12);
+    src.playbackRate.value = ratio * (1 + (Math.random() - 0.5) * 0.008);
+
+    // Timing humanizado: barrido hacia abajo con jitter
+    const sweepTime  = 0.013 * si + (Math.random() - 0.5) * 0.004;
+    const attack     = 0.006 + si * 0.001;
+    const dynCurve   = 0.82 + (si / 5) * 0.18;
+    const velVar     = 1 + (Math.random() - 0.5) * 0.14;
+    const baseBal    = si === 0 ? 0.78 : si === 1 ? 0.88 : 1.0;
+    const vol        = Math.min(0.97, 0.82 * baseBal * dynCurve * velVar);
+    const decay      = STRING_DECAY[si] ?? 1.0;
+
+    gain.gain.setValueAtTime(0.001, sweepTime);
+    gain.gain.linearRampToValueAtTime(vol, sweepTime + attack);
+    gain.gain.exponentialRampToValueAtTime(0.001, sweepTime + attack + decay);
+
+    src.connect(gain); gain.connect(dest);
+    src.start(sweepTime);
   });
+
+  const rendered = await offCtx.startRendering();
+  chordCache.set(key, rendered);
+  return rendered;
+}
+
+// ── API pública ────────────────────────────────────────────────────────────────
+export const preloadChord = (frets: (number | 'x' | 'o')[]) => {
+  if (samplesReady) renderChord(frets).catch(() => {});
+  else preloadBaseSamples().then(() => renderChord(frets).catch(() => {}));
+};
+
+export const playChordAudio = async (frets: (number | 'x' | 'o')[]) => {
+  const ctx = getAudioContext();
+  const buf = await renderChord(frets);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(getMaster());
+  src.start(ctx.currentTime);
 };
 
 // Humanización de rasgueo: simula la mano de un guitarrista real
