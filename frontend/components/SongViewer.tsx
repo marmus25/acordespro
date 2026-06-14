@@ -18,7 +18,7 @@ import {
 import { SingMode } from './SingMode';
 import { publishCommunitySong } from '../services/communitySongs';
 import { ChordPlayView } from './ChordPlayView';
-import { AudioEQ } from './AudioEQ';
+import { AudioFX } from './AudioFX';
 
 const EqToolbarIcon = () => (
   <svg viewBox="0 0 24 24" width={20} height={20} fill="currentColor">
@@ -906,7 +906,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
           <button onClick={() => setShowMetronome(m => !m)} className={toolBtn(showMetronome)} title="Metrónomo">
             <MetronomeIcon className="w-5 h-5" />
           </button>
-          <button onClick={() => setShowEQ(q => !q)} className={toolBtn(showEQ)} title="Ecualizador de guitarra">
+          <button onClick={() => setShowEQ(q => !q)} className={toolBtn(showEQ)} title="Efectos de audio">
             <EqToolbarIcon />
           </button>
           <button onClick={() => setShowCapo(c => !c)} className={toolBtn(showCapo)} title="Calculadora de cejilla">
@@ -1055,8 +1055,8 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
       {/* Metronome panel */}
       {showMetronome && <MetronomePanel />}
 
-      {/* Audio EQ panel */}
-      {showEQ && <AudioEQ onClose={() => setShowEQ(false)} />}
+      {/* Audio FX panel */}
+      {showEQ && <AudioFX onClose={() => setShowEQ(false)} />}
 
       {/* Practice mode panel */}
       {showPracticeMode && (

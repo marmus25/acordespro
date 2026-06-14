@@ -93,6 +93,34 @@ let uEqMid: BiquadFilterNode | null      = null;
 let uEqPresence: BiquadFilterNode | null = null;
 let uEqAir: BiquadFilterNode | null      = null;
 
+// Nodos de efectos master controlables
+let mRevWet: GainNode | null      = null;
+let mRevDry: GainNode | null      = null;
+let mDelNode: DelayNode | null    = null;
+let mDelFb: GainNode | null       = null;
+let mDelWet: GainNode | null      = null;
+let mDelDry: GainNode | null      = null;
+
+export const setMasterReverb = (wetPct: number) => {
+  const v = Math.max(0, Math.min(100, wetPct)) / 100;
+  if (mRevWet) mRevWet.gain.value = v * 0.55;
+  if (mRevDry) mRevDry.gain.value = 1 - v * 0.25;
+};
+
+export const setMasterDelay = (timeMs: number, feedbackPct: number, wetPct: number) => {
+  if (mDelNode) mDelNode.delayTime.value = Math.max(0, Math.min(1000, timeMs)) / 1000;
+  if (mDelFb)   mDelFb.gain.value        = Math.max(0, Math.min(0.85, feedbackPct / 100));
+  if (mDelWet)  mDelWet.gain.value       = Math.max(0, Math.min(1, wetPct / 100));
+  if (mDelDry)  mDelDry.gain.value       = 1 - (wetPct / 100) * 0.45;
+};
+
+export const getMasterFxValues = () => ({
+  reverbWet:       Math.round((mRevWet?.gain.value  ?? 0.28) / 0.55 * 100),
+  delayTimeMs:     Math.round((mDelNode?.delayTime.value ?? 0) * 1000),
+  delayFeedback:   Math.round((mDelFb?.gain.value   ?? 0) * 100),
+  delayWet:        Math.round((mDelWet?.gain.value  ?? 0) * 100),
+});
+
 export type EqBand = 'bass' | 'body' | 'mid' | 'presence' | 'air';
 
 export const setMasterEq = (band: EqBand, db: number) => {
@@ -154,21 +182,34 @@ const getMaster = (): AudioNode => {
   const cDelR = ctx.createDelay(0.05); cDelR.delayTime.value = 0.011;
   const cMerge = ctx.createGain(); cMerge.gain.value = 0.08;
 
-  // Reverb sala íntima
+  // ── Reverb controlable ──
   const conv  = ctx.createConvolver(); conv.buffer = buildImpulse(ctx);
   const revHp = ctx.createBiquadFilter();
   revHp.type = 'highpass'; revHp.frequency.value = 160; revHp.Q.value = 0.7;
-  const wet = ctx.createGain(); wet.gain.value = 0.28;
-  const dry = ctx.createGain(); dry.gain.value = 0.88;
+  mRevWet = ctx.createGain(); mRevWet.gain.value = 0.28;
+  mRevDry = ctx.createGain(); mRevDry.gain.value = 0.88;
   const dspOut = ctx.createGain(); dspOut.gain.value = 0.85;
+
+  // ── Delay controlable (arranca apagado) ──
+  mDelNode = ctx.createDelay(1.5); mDelNode.delayTime.value = 0.30;
+  mDelFb   = ctx.createGain();     mDelFb.gain.value        = 0;
+  mDelWet  = ctx.createGain();     mDelWet.gain.value       = 0;
+  mDelDry  = ctx.createGain();     mDelDry.gain.value       = 1;
 
   hp.connect(cut250); cut250.connect(bodyRes); bodyRes.connect(bodyRes2);
   bodyRes2.connect(presence); presence.connect(cut5k); cut5k.connect(air); air.connect(comp);
-  comp.connect(dry);
+  // Reverb
+  comp.connect(mRevDry);
+  comp.connect(conv); conv.connect(revHp); revHp.connect(mRevWet);
+  // Chorus
   comp.connect(cDelL); cDelL.connect(cMerge);
   comp.connect(cDelR); cDelR.connect(cMerge); cMerge.connect(dspOut);
-  comp.connect(conv); conv.connect(revHp); revHp.connect(wet);
-  dry.connect(dspOut); wet.connect(dspOut);
+  // Delay (feedback loop)
+  comp.connect(mDelDry);
+  comp.connect(mDelNode); mDelNode.connect(mDelFb); mDelFb.connect(mDelNode);
+  mDelNode.connect(mDelWet);
+  mRevDry.connect(dspOut); mRevWet.connect(dspOut);
+  mDelDry.connect(dspOut); mDelWet.connect(dspOut);
 
   // ── EQ de usuario (5 bandas) — arranca plano (0dB) ──
   uEqBass     = ctx.createBiquadFilter(); uEqBass.type     = 'lowshelf'; uEqBass.frequency.value     = 150; uEqBass.gain.value     = 0;
