@@ -18,6 +18,20 @@ import {
 import { SingMode } from './SingMode';
 import { publishCommunitySong } from '../services/communitySongs';
 import { ChordPlayView } from './ChordPlayView';
+import { AudioEQ } from './AudioEQ';
+
+const EqToolbarIcon = () => (
+  <svg viewBox="0 0 24 24" width={20} height={20} fill="currentColor">
+    <rect x="2"  y="13" width="3" height="9" rx="1.5" />
+    <rect x="2"  y="2"  width="3" height="4" rx="1.5" opacity={0.35}/>
+    <rect x="7"  y="7"  width="3" height="15" rx="1.5" />
+    <rect x="7"  y="2"  width="3" height="3"  rx="1.5" opacity={0.35}/>
+    <rect x="12" y="4"  width="3" height="18" rx="1.5" />
+    <rect x="12" y="2"  width="3" height="1"  rx="1.5" opacity={0.35}/>
+    <rect x="17" y="9"  width="3" height="13" rx="1.5" />
+    <rect x="17" y="2"  width="3" height="5"  rx="1.5" opacity={0.35}/>
+  </svg>
+);
 
 const SmallChordDiagram: React.FC<{ chordName: string; shape: ChordShape; onClick: () => void }> = ({ chordName, shape, onClick }) => {
   const padLeft = 12, padTop = 20, strSpacing = 10, fretSpacing = 11, numFrets = 4;
@@ -205,6 +219,9 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
 
   // Metronome
   const [showMetronome, setShowMetronome] = useState(false);
+
+  // Audio EQ
+  const [showEQ, setShowEQ] = useState(false);
 
   // Community publish
   const [publishing, setPublishing] = useState(false);
@@ -895,6 +912,9 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
           <button onClick={() => setShowMetronome(m => !m)} className={toolBtn(showMetronome)} title="Metrónomo">
             <MetronomeIcon className="w-5 h-5" />
           </button>
+          <button onClick={() => setShowEQ(q => !q)} className={toolBtn(showEQ)} title="Ecualizador de guitarra">
+            <EqToolbarIcon />
+          </button>
           <button onClick={() => setShowCapo(c => !c)} className={toolBtn(showCapo)} title="Calculadora de cejilla">
             <CapoIcon className="w-5 h-5" />
           </button>
@@ -1040,6 +1060,9 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
 
       {/* Metronome panel */}
       {showMetronome && <MetronomePanel />}
+
+      {/* Audio EQ panel */}
+      {showEQ && <AudioEQ onClose={() => setShowEQ(false)} />}
 
       {/* Practice mode panel */}
       {showPracticeMode && (

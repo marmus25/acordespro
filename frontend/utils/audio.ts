@@ -105,6 +105,32 @@ const buildImpulse = (ctx: BaseAudioContext): AudioBuffer => {
 // ── Master DSP — EQ Korg PA + cuerpo de guitarra + chorus estéreo + reverb ───
 let masterNode: AudioNode | null = null;
 
+// Nodos del EQ de usuario (5 bandas post-DSP, todos arrancan en 0dB)
+let uEqBass: BiquadFilterNode | null     = null;
+let uEqBody: BiquadFilterNode | null     = null;
+let uEqMid: BiquadFilterNode | null      = null;
+let uEqPresence: BiquadFilterNode | null = null;
+let uEqAir: BiquadFilterNode | null      = null;
+
+export type EqBand = 'bass' | 'body' | 'mid' | 'presence' | 'air';
+
+export const setMasterEq = (band: EqBand, db: number) => {
+  const v = Math.max(-12, Math.min(12, db));
+  if (band === 'bass'     && uEqBass)     uEqBass.gain.value     = v;
+  if (band === 'body'     && uEqBody)     uEqBody.gain.value     = v;
+  if (band === 'mid'      && uEqMid)      uEqMid.gain.value      = v;
+  if (band === 'presence' && uEqPresence) uEqPresence.gain.value = v;
+  if (band === 'air'      && uEqAir)      uEqAir.gain.value      = v;
+};
+
+export const getMasterEqValues = (): Record<EqBand, number> => ({
+  bass:     uEqBass?.gain.value     ?? 0,
+  body:     uEqBody?.gain.value     ?? 0,
+  mid:      uEqMid?.gain.value      ?? 0,
+  presence: uEqPresence?.gain.value ?? 0,
+  air:      uEqAir?.gain.value      ?? 0,
+});
+
 const getMaster = (): AudioNode => {
   if (masterNode) return masterNode;
   const ctx = getAudioContext();
@@ -153,16 +179,25 @@ const getMaster = (): AudioNode => {
   revHp.type = 'highpass'; revHp.frequency.value = 160; revHp.Q.value = 0.7;
   const wet = ctx.createGain(); wet.gain.value = 0.28;
   const dry = ctx.createGain(); dry.gain.value = 0.88;
-  const out = ctx.createGain(); out.gain.value = 0.85;
+  const dspOut = ctx.createGain(); dspOut.gain.value = 0.85;
 
   hp.connect(cut250); cut250.connect(bodyRes); bodyRes.connect(bodyRes2);
   bodyRes2.connect(presence); presence.connect(cut5k); cut5k.connect(air); air.connect(comp);
   comp.connect(dry);
   comp.connect(cDelL); cDelL.connect(cMerge);
-  comp.connect(cDelR); cDelR.connect(cMerge); cMerge.connect(out);
+  comp.connect(cDelR); cDelR.connect(cMerge); cMerge.connect(dspOut);
   comp.connect(conv); conv.connect(revHp); revHp.connect(wet);
-  dry.connect(out); wet.connect(out);
-  out.connect(ctx.destination);
+  dry.connect(dspOut); wet.connect(dspOut);
+
+  // ── EQ de usuario (5 bandas) — arranca plano (0dB) ──
+  uEqBass     = ctx.createBiquadFilter(); uEqBass.type     = 'lowshelf'; uEqBass.frequency.value     = 150; uEqBass.gain.value     = 0;
+  uEqBody     = ctx.createBiquadFilter(); uEqBody.type     = 'peaking';  uEqBody.frequency.value     = 430; uEqBody.Q.value = 3.0; uEqBody.gain.value     = 0;
+  uEqMid      = ctx.createBiquadFilter(); uEqMid.type      = 'peaking';  uEqMid.frequency.value      = 1100; uEqMid.Q.value = 1.8; uEqMid.gain.value      = 0;
+  uEqPresence = ctx.createBiquadFilter(); uEqPresence.type = 'peaking';  uEqPresence.frequency.value = 2800; uEqPresence.Q.value = 1.3; uEqPresence.gain.value = 0;
+  uEqAir      = ctx.createBiquadFilter(); uEqAir.type      = 'highshelf'; uEqAir.frequency.value     = 9000; uEqAir.gain.value      = 0;
+
+  dspOut.connect(uEqBass); uEqBass.connect(uEqBody); uEqBody.connect(uEqMid);
+  uEqMid.connect(uEqPresence); uEqPresence.connect(uEqAir); uEqAir.connect(ctx.destination);
 
   masterNode = hp;
   return masterNode;
