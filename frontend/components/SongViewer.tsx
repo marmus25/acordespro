@@ -130,26 +130,41 @@ const TinyChordDiagram: React.FC<{ shape: ChordShape; onClick: () => void; brigh
 };
 
 const FloatChordDiagramSVG: React.FC<{ shape: ChordShape; color: string; size?: 'md' | 'sm' }> = ({ shape, color, size = 'md' }) => {
-  const padL = size === 'md' ? 14 : 10, padT = size === 'md' ? 26 : 20;
+  const showFret = shape.baseFret > 1;
+  const fnW   = showFret ? (size === 'md' ? 34 : 28) : 0;  // space left of grid for fret badge
+  const padL  = size === 'md' ? 14 : 10, padT = size === 'md' ? 26 : 20;
   const strSp = size === 'md' ? 13 : 10, fretSp = size === 'md' ? 13 : 10, nFrets = 4;
-  const W = padL * 2 + strSp * 5, H = padT + nFrets * fretSp + 10;
-  const sx = (s: number) => padL + s * strSp;
+  const W = fnW + padL * 2 + strSp * 5, H = padT + nFrets * fretSp + 10;
+  const sx = (s: number) => fnW + padL + s * strSp;
   const fy = (row: number) => padT + row * fretSp;
   const dotCY = (row: number) => fy(row) - fretSp / 2;
   const toRow = (fret: number) => fret - shape.baseFret + 1;
   const r = size === 'md' ? 5 : 4;
   const fs = size === 'md' ? 9 : 7;
+  const fnSize = size === 'md' ? 17 : 13;   // badge font size
+  const bH     = fnSize * 1.55;             // badge height
+  const bY     = dotCY(1) - bH / 2;        // badge top — centrado en primer traste
+  const bW     = fnW - 5;
   return (
     <div className="flex flex-col items-center">
-      {shape.baseFret > 1 && (
-        <span
-          className="font-black leading-none mb-1 px-2 py-0.5 rounded-full shadow-lg"
-          style={{ background: color, color: '#000', fontSize: size === 'md' ? 13 : 11, opacity: 0.95 }}
-        >
-          {shape.baseFret}fr
-        </span>
-      )}
       <svg width={W} height={H} className="text-white/90" overflow="visible">
+        {/* Badge de traste — fondo coloreado, texto negro, a la izquierda de la cuadrícula */}
+        {showFret && (
+          <g>
+            <rect x={1} y={bY} width={bW} height={bH} rx={5} fill={color} />
+            <text
+              x={1 + bW / 2}
+              y={bY + bH * 0.68}
+              textAnchor="middle"
+              fontSize={fnSize}
+              fontWeight="900"
+              fill="#000"
+              fontFamily="system-ui,sans-serif"
+            >
+              {shape.baseFret}fr
+            </text>
+          </g>
+        )}
         {shape.baseFret === 1 && <rect x={sx(0)} y={fy(0)-2.5} width={sx(5)-sx(0)} height={3.5} rx={1.5} fill="currentColor" />}
         {[0,1,2,3,4,5].map(s => <line key={s} x1={sx(s)} y1={fy(0)} x2={sx(s)} y2={fy(nFrets)} stroke="currentColor" strokeWidth={0.9} />)}
         {Array.from({length: nFrets+1}, (_,i) => <line key={i} x1={sx(0)} y1={fy(i)} x2={sx(5)} y2={fy(i)} stroke="currentColor" strokeWidth={0.9} />)}
