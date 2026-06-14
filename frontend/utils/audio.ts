@@ -170,37 +170,60 @@ const getMaster = (): AudioNode => {
   if (masterNode) return masterNode;
   const ctx = getAudioContext();
 
-  // Corta sub-graves que ensucian (pedido de cuerda suelta)
+  // ── EQ tipo DSK Nylon ────────────────────────────────────────────────────────
   const hp = ctx.createBiquadFilter();
-  hp.type = 'highpass'; hp.frequency.value = 90; hp.Q.value = 0.8;
+  hp.type = 'highpass'; hp.frequency.value = 80; hp.Q.value = 0.7;
 
-  // Presencia de ataque — donde vive el "click" de la púa/dedo
+  // Cortar caja/boxiness — zona que hace sonar opaco
+  const cut250 = ctx.createBiquadFilter();
+  cut250.type = 'peaking'; cut250.frequency.value = 250; cut250.Q.value = 1.4; cut250.gain.value = -4;
+
+  // Cuerpo cálido de la nylon sin embarrar
+  const body = ctx.createBiquadFilter();
+  body.type = 'peaking'; body.frequency.value = 900; body.Q.value = 1.2; body.gain.value = 2;
+
+  // Definición de cuerda — donde se siente el toque del dedo
   const presence = ctx.createBiquadFilter();
-  presence.type = 'peaking'; presence.frequency.value = 3200; presence.Q.value = 1.2; presence.gain.value = 3;
+  presence.type = 'peaking'; presence.frequency.value = 2800; presence.Q.value = 1.3; presence.gain.value = 4;
 
-  // Air: leve brillo en los agudos para que las cuerdas canten
+  // Cortar metálico del acero para sonar a nylon
+  const cut5k = ctx.createBiquadFilter();
+  cut5k.type = 'peaking'; cut5k.frequency.value = 5000; cut5k.Q.value = 1.0; cut5k.gain.value = -3;
+
+  // Aire final — como DSK que tiene ese brillo abierto
   const air = ctx.createBiquadFilter();
-  air.type = 'highshelf'; air.frequency.value = 7000; air.gain.value = 2;
+  air.type = 'highshelf'; air.frequency.value = 9000; air.gain.value = 3;
 
-  // Compresor suave — unifica el volumen entre cuerdas sin aplastar el ataque
+  // Compresor suave — DSK nivela dinámicas sin aplastar
   const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -22; comp.knee.value = 12;
-  comp.ratio.value = 3; comp.attack.value = 0.008; comp.release.value = 0.20;
+  comp.threshold.value = -20; comp.knee.value = 10;
+  comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.25;
 
-  // Reverb sala pequeña — da espacio sin enlodar
+  // ── Chorus sutil (carácter DSK: ligeramente ancho) ───────────────────────────
+  const chorusDelay = ctx.createDelay(0.05);
+  chorusDelay.delayTime.value = 0.012;
+  const chorusGain = ctx.createGain(); chorusGain.gain.value = 0.18;
+
+  // ── Reverb sala íntima — DSK tiene reverb prominente ────────────────────────
   const convolver = ctx.createConvolver();
   convolver.buffer = buildImpulse(ctx);
 
   const reverbHp = ctx.createBiquadFilter();
-  reverbHp.type = 'highpass'; reverbHp.frequency.value = 180; reverbHp.Q.value = 0.7;
+  reverbHp.type = 'highpass'; reverbHp.frequency.value = 160; reverbHp.Q.value = 0.7;
 
-  const wet = ctx.createGain(); wet.gain.value = 0.22;   // menos reverb → más limpio
-  const dry = ctx.createGain(); dry.gain.value = 0.92;
-  const master = ctx.createGain(); master.gain.value = 0.85;
+  const wet = ctx.createGain(); wet.gain.value = 0.30;
+  const dry = ctx.createGain(); dry.gain.value = 0.90;
+  const master = ctx.createGain(); master.gain.value = 0.82;
 
-  hp.connect(presence); presence.connect(air); air.connect(comp);
-  comp.connect(dry); comp.connect(convolver);
-  convolver.connect(reverbHp); reverbHp.connect(wet);
+  // Cadena: hp → cut250 → body → presence → cut5k → air → comp
+  //          → dry ──────────────────────────────────────────→ master → out
+  //          → chorusDelay → chorusGain ──────────────────→ master
+  //          → convolver → reverbHp → wet ────────────────→ master
+  hp.connect(cut250); cut250.connect(body); body.connect(presence);
+  presence.connect(cut5k); cut5k.connect(air); air.connect(comp);
+  comp.connect(dry);
+  comp.connect(chorusDelay); chorusDelay.connect(chorusGain); chorusGain.connect(master);
+  comp.connect(convolver); convolver.connect(reverbHp); reverbHp.connect(wet);
   dry.connect(master); wet.connect(master);
   master.connect(ctx.destination);
 
@@ -337,9 +360,12 @@ const playString = (
   const gain   = ctx.createGain();
   source.buffer = buffer;
   source.playbackRate.value = Math.pow(2, (targetMidi - baseMidi) / 12);
-  const decay = STRING_DECAY[stringIndex] ?? 1.0;
-  gain.gain.setValueAtTime(vol, startTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, startTime + decay);
+  const decay  = STRING_DECAY[stringIndex] ?? 1.0;
+  // Ataque suave tipo dedo/nylon — no instántaneo como púa de acero
+  const attack = 0.006 + stringIndex * 0.001; // graves un poco más lentos
+  gain.gain.setValueAtTime(0.001, startTime);
+  gain.gain.linearRampToValueAtTime(vol, startTime + attack);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime + attack + decay);
   source.connect(gain);
   gain.connect(dest);
 
