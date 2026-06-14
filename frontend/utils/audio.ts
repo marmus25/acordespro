@@ -124,35 +124,35 @@ const getMaster = (): AudioNode => {
   const cut250 = ctx.createBiquadFilter();
   cut250.type = 'peaking'; cut250.frequency.value = 250; cut250.Q.value = 1.4; cut250.gain.value = -4;
 
-  // Resonancia cuerpo guitarra (Korg PA) — pico estrecho que da el "thump" natural
+  // Resonancia cuerpo nylón — más suave que acero
   const bodyRes = ctx.createBiquadFilter();
-  bodyRes.type = 'peaking'; bodyRes.frequency.value = 430; bodyRes.Q.value = 4.0; bodyRes.gain.value = 3;
+  bodyRes.type = 'peaking'; bodyRes.frequency.value = 380; bodyRes.Q.value = 3.0; bodyRes.gain.value = 2;
 
-  // Segunda resonancia de cuerpo
+  // Calidez de nylón (rango medio-bajo)
   const bodyRes2 = ctx.createBiquadFilter();
-  bodyRes2.type = 'peaking'; bodyRes2.frequency.value = 1100; bodyRes2.Q.value = 2.5; bodyRes2.gain.value = 1.5;
+  bodyRes2.type = 'peaking'; bodyRes2.frequency.value = 900; bodyRes2.Q.value = 1.8; bodyRes2.gain.value = 1;
 
-  // Presencia de cuerda — ataque del dedo
+  // Presencia reducida — nylón es naturalmente oscuro, no agregar brillo artificial
   const presence = ctx.createBiquadFilter();
-  presence.type = 'peaking'; presence.frequency.value = 2800; presence.Q.value = 1.3; presence.gain.value = 4;
+  presence.type = 'peaking'; presence.frequency.value = 2500; presence.Q.value = 1.2; presence.gain.value = 2;
 
-  // Quitar metálico del acero
+  // Suavizar el borde del ataque del dedo
   const cut5k = ctx.createBiquadFilter();
-  cut5k.type = 'peaking'; cut5k.frequency.value = 5000; cut5k.Q.value = 1.0; cut5k.gain.value = -3;
+  cut5k.type = 'peaking'; cut5k.frequency.value = 5000; cut5k.Q.value = 0.9; cut5k.gain.value = -4;
 
-  // Aire abierto (como DSK)
+  // Aire mínimo — nylón tiene poco contenido en altas frecuencias
   const air = ctx.createBiquadFilter();
-  air.type = 'highshelf'; air.frequency.value = 9000; air.gain.value = 3;
+  air.type = 'highshelf'; air.frequency.value = 8000; air.gain.value = 1;
 
   // Limiter/compresor estilo Korg: ataque rápido, release medio
   const comp = ctx.createDynamicsCompressor();
   comp.threshold.value = -16; comp.knee.value = 6;
   comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.18;
 
-  // Chorus estéreo de dos ramas (9ms izquierda, 15ms derecha) → ancho real
-  const cDelL = ctx.createDelay(0.05); cDelL.delayTime.value = 0.009;
-  const cDelR = ctx.createDelay(0.05); cDelR.delayTime.value = 0.015;
-  const cMerge = ctx.createGain(); cMerge.gain.value = 0.13;
+  // Chorus suave para nylón — solo agrega ligero movimiento, no ancho artificial
+  const cDelL = ctx.createDelay(0.05); cDelL.delayTime.value = 0.007;
+  const cDelR = ctx.createDelay(0.05); cDelR.delayTime.value = 0.011;
+  const cMerge = ctx.createGain(); cMerge.gain.value = 0.08;
 
   // Reverb sala íntima
   const conv  = ctx.createConvolver(); conv.buffer = buildImpulse(ctx);
@@ -240,7 +240,8 @@ export const setPracticeReverb = (wetPct: number) => {
 
 // ── Constantes de cuerda ──────────────────────────────────────────────────────
 const STRING_BASE_MIDI = [40, 45, 50, 55, 59, 64];
-const STRING_DECAY     = [2.2, 1.9, 1.6, 1.4, 1.2, 1.0];
+// Samples española: E2=6s, A2=6s, D3=6s → podemos usar decay más largo en bajos
+const STRING_DECAY     = [3.5, 3.0, 2.5, 2.0, 1.5, 1.0];
 // Panorama estéreo natural: grave izquierda → agudo derecha (como guitarra real)
 const STRING_PAN       = [-0.25, -0.15, -0.05, 0.05, 0.15, 0.25]; // samples ya son stereo
 
