@@ -146,14 +146,9 @@ const nearest = (map: Map<number, AudioBuffer>, midi: number): { buffer: AudioBu
   return { buffer, baseMidi };
 };
 
-// vol >= 0.78 → forte | 0.55–0.77 → piano | cuerdas altas rasgueo fuerte → hammer
-const getBuffer = (targetMidi: number, vol: number, stringIdx: number): { buffer: AudioBuffer; baseMidi: number } | null => {
-  // Cuerdas agudas (3-5) en rasgueos fuertes usan hammer para más mordida
-  if (stringIdx >= 3 && vol >= 0.80 && bufferH.size > 0) {
-    const h = nearest(bufferH, targetMidi);
-    if (h && Math.abs(h.baseMidi - targetMidi) <= 3) return h;
-  }
-  if (vol >= 0.68) return nearest(bufferF, targetMidi) ?? nearest(bufferP, targetMidi);
+// _f para rasgueo normal, _p para notas muy suaves (arpegios lentos)
+const getBuffer = (targetMidi: number, vol: number): { buffer: AudioBuffer; baseMidi: number } | null => {
+  if (vol >= 0.60) return nearest(bufferF, targetMidi) ?? nearest(bufferP, targetMidi);
   return nearest(bufferP, targetMidi) ?? nearest(bufferF, targetMidi);
 };
 
@@ -175,36 +170,35 @@ const getMaster = (): AudioNode => {
   if (masterNode) return masterNode;
   const ctx = getAudioContext();
 
+  // Corta sub-graves que ensucian (pedido de cuerda suelta)
   const hp = ctx.createBiquadFilter();
-  hp.type = 'highpass'; hp.frequency.value = 60; hp.Q.value = 0.7;
+  hp.type = 'highpass'; hp.frequency.value = 90; hp.Q.value = 0.8;
 
-  // Calidez KS: boost cuerpo de la nota
-  const warmth = ctx.createBiquadFilter();
-  warmth.type = 'peaking'; warmth.frequency.value = 350; warmth.Q.value = 1.2; warmth.gain.value = 5;
-
-  // Presencia de ataque de cuerda
+  // Presencia de ataque — donde vive el "click" de la púa/dedo
   const presence = ctx.createBiquadFilter();
-  presence.type = 'peaking'; presence.frequency.value = 2500; presence.Q.value = 1.5; presence.gain.value = 2;
+  presence.type = 'peaking'; presence.frequency.value = 3200; presence.Q.value = 1.2; presence.gain.value = 3;
 
-  // Recortar brillos metálicos — carácter más cálido
-  const shelf = ctx.createBiquadFilter();
-  shelf.type = 'highshelf'; shelf.frequency.value = 6000; shelf.gain.value = -4;
+  // Air: leve brillo en los agudos para que las cuerdas canten
+  const air = ctx.createBiquadFilter();
+  air.type = 'highshelf'; air.frequency.value = 7000; air.gain.value = 2;
 
+  // Compresor suave — unifica el volumen entre cuerdas sin aplastar el ataque
   const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -18; comp.knee.value = 10;
-  comp.ratio.value = 3.5; comp.attack.value = 0.006; comp.release.value = 0.22;
+  comp.threshold.value = -22; comp.knee.value = 12;
+  comp.ratio.value = 3; comp.attack.value = 0.008; comp.release.value = 0.20;
 
+  // Reverb sala pequeña — da espacio sin enlodar
   const convolver = ctx.createConvolver();
   convolver.buffer = buildImpulse(ctx);
 
   const reverbHp = ctx.createBiquadFilter();
-  reverbHp.type = 'highpass'; reverbHp.frequency.value = 120; reverbHp.Q.value = 0.7;
+  reverbHp.type = 'highpass'; reverbHp.frequency.value = 180; reverbHp.Q.value = 0.7;
 
-  const wet = ctx.createGain(); wet.gain.value = 0.38;
-  const dry = ctx.createGain(); dry.gain.value = 0.85;
-  const master = ctx.createGain(); master.gain.value = 0.80;
+  const wet = ctx.createGain(); wet.gain.value = 0.22;   // menos reverb → más limpio
+  const dry = ctx.createGain(); dry.gain.value = 0.92;
+  const master = ctx.createGain(); master.gain.value = 0.85;
 
-  hp.connect(warmth); warmth.connect(presence); presence.connect(shelf); shelf.connect(comp);
+  hp.connect(presence); presence.connect(air); air.connect(comp);
   comp.connect(dry); comp.connect(convolver);
   convolver.connect(reverbHp); reverbHp.connect(wet);
   dry.connect(master); wet.connect(master);
@@ -302,8 +296,8 @@ export const setPracticeReverb = (wetPct: number) => {
   c.reverbDry.gain.value = 1 - v * 0.35;
 };
 
-// ── Decay por cuerda — duración larga estilo KS/nylon ────────────────────────
-const STRING_DECAY = [4.5, 4.0, 3.5, 3.0, 2.5, 2.0];
+// ── Decay natural: graves un poco más largos, agudos se cortan limpio ────────
+const STRING_DECAY = [2.0, 1.8, 1.6, 1.4, 1.2, 1.0];
 
 // ── Notas activas ─────────────────────────────────────────────────────────────
 interface ActiveNote { gain: GainNode }
@@ -335,7 +329,7 @@ const playString = (
   const ctx        = getAudioContext();
   const dest       = practiceMode ? getPracticeChain().input : getMaster();
   const targetMidi = STRING_BASE_MIDI[stringIndex] + fretNum;
-  const result     = getBuffer(targetMidi, vol, stringIndex);
+  const result     = getBuffer(targetMidi, vol);
   if (!result) return;
   const { buffer, baseMidi } = result;
 
@@ -385,7 +379,8 @@ export const scheduleStrum = (
   const order  = isDown ? active : [...active].reverse();
   order.forEach(({ fret, si }, i) => {
     const fn = fret === 'o' ? 0 : (fret as number);
-    const v  = si <= 1 ? vol * 0.82 : vol;
+    // Cuerdas bajas ligeramente más suaves — balance natural de rasgueo
+    const v  = si === 0 ? vol * 0.78 : si === 1 ? vol * 0.88 : vol;
     playString(si, fn, startTime + i * delay, v);
   });
 };
