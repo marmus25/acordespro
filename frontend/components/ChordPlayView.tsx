@@ -4,6 +4,7 @@ import { transposeChord } from '../utils/transpose';
 import { lookupChord } from '../utils/chordDiagrams';
 import { chordproToSections } from '../utils/chordproToSong';
 import { scheduleStrum, getCtxTime, stopAllAudio, ensureAudio } from '../utils/audio';
+import { loadChordPlayConfig, saveChordPlayConfig } from '../services/chordPlaySettings';
 
 // ── Iconos inline ─────────────────────────────────────────────────────────────
 const IconMusic    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>;
@@ -88,6 +89,171 @@ function scheduleChordPattern(
   }
 }
 
+// ── RealFretboardDiagram ──────────────────────────────────────────────────────
+// SVG generado matemáticamente: cuerdas, trastes y puntos calibrados con
+// la fórmula de temperamento igual. Si el acorde es en traste 3, la ventana
+// muestra el espacio real del traste 3, con el espaciado correcto.
+const RealFretboardDiagram: React.FC<{ chord: ChordDef; width?: number }> = ({ chord, width = 130 }) => {
+  const VW = 200, VH = 345;
+  const start = chord.baseFret > 1 ? chord.baseFret : 1;
+  const SHOW  = 5;  // espacios de traste visibles
+
+  // Layout interno
+  const TOP  = 38, SIDE = 26, BOT = 12;
+  const nutY = TOP, fretH = VH - TOP - BOT;
+  const neckL = SIDE, neckR = VW - SIDE;
+
+  // X de cada cuerda (0 = cuerda 6 Mi grave, 5 = cuerda 1 Mi agudo)
+  const sX = (si: number) => neckL + (neckR - neckL) * si / 5;
+
+  // Fórmula de temperamento igual: posición relativa del traste n
+  const fp = (n: number) => 1 - Math.pow(2, -n / 12);
+  const wS = fp(start - 1), wE = fp(start - 1 + SHOW), wR = wE - wS;
+
+  // Y de la línea del traste n (coordenada absoluta del traste en la guitarra)
+  const fy = (n: number) => nutY + ((fp(n) - wS) / wR) * fretH;
+
+  // Y del centro del espacio del traste n (donde va el dedo)
+  const cy = (n: number) => (fy(n - 1) + fy(n)) / 2;
+
+  const r     = 11.5;           // radio del punto
+  const openY = nutY - 15;      // Y para indicadores abierta/apagada
+
+  // Puntos de posición incrustados en la madera (frets 3,5,7,9,12,15,17,19,21,24)
+  const INLAYS  = [3,5,7,9,12,15,17,19,21,24];
+  const DOUBLE  = new Set([12,24]);
+
+  const strWidths = [2.1, 1.7, 1.35, 1.1, 0.85, 0.65];
+
+  return (
+    <svg viewBox={`0 0 ${VW} ${VH}`} width={width} height={Math.round(width * VH / VW)}
+         style={{ display: 'block', flexShrink: 0, borderRadius: 8 }}>
+      <defs>
+        <linearGradient id="chord-fb" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stopColor="#120504" />
+          <stop offset="18%"  stopColor="#2c0d07" />
+          <stop offset="50%"  stopColor="#391108" />
+          <stop offset="82%"  stopColor="#2c0d07" />
+          <stop offset="100%" stopColor="#120504" />
+        </linearGradient>
+        <linearGradient id="chord-nut" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="#f0e8d0" />
+          <stop offset="100%" stopColor="#c4b890" />
+        </linearGradient>
+      </defs>
+
+      {/* Fondo negro exterior */}
+      <rect x={0} y={0} width={VW} height={VH} fill="#0d0d0d" rx={6} />
+
+      {/* Madera del mástil */}
+      <rect x={neckL - 2} y={nutY} width={neckR - neckL + 4} height={fretH}
+            fill="url(#chord-fb)" />
+
+      {/* Inlays de posición (puntos de la madera) */}
+      {INLAYS.filter(f => f >= start && f < start + SHOW).map(f => {
+        const midX = VW / 2, yy = cy(f);
+        return DOUBLE.has(f)
+          ? <g key={f}>
+              <circle cx={midX - 18} cy={yy} r={3.5} fill="rgba(220,200,155,0.20)" />
+              <circle cx={midX + 18} cy={yy} r={3.5} fill="rgba(220,200,155,0.20)" />
+            </g>
+          : <circle key={f} cx={midX} cy={yy} r={4} fill="rgba(220,200,155,0.18)" />;
+      })}
+
+      {/* Líneas de traste */}
+      {Array.from({length: SHOW + 1}, (_, i) => {
+        const absF = start - 1 + i, yy = fy(absF);
+        const isNut = absF === 0;
+        return (
+          <g key={i}>
+            {/* Sombra del traste */}
+            {!isNut && <line x1={neckL-2} y1={yy+1.2} x2={neckR+2} y2={yy+1.2}
+              stroke="rgba(0,0,0,0.45)" strokeWidth={1.5} />}
+            {/* Hilo del traste */}
+            <line x1={neckL - 2} y1={yy} x2={neckR + 2} y2={yy}
+              stroke={isNut ? 'url(#chord-nut)' : '#9aacb8'}
+              strokeWidth={isNut ? 5.5 : 2.2}
+              strokeLinecap="round" />
+          </g>
+        );
+      })}
+
+      {/* Cuerdas */}
+      {strWidths.map((sw, si) => (
+        <line key={si}
+          x1={sX(si)} y1={nutY - 3} x2={sX(si)} y2={VH - BOT + 5}
+          stroke="#b0bcc8" strokeWidth={sw} opacity={0.88} />
+      ))}
+
+      {/* Números de traste en el costado izquierdo */}
+      {Array.from({length: SHOW}, (_, i) => {
+        const fretNum = start + i;
+        const yy = cy(fretNum);
+        const isFirst = i === 0 && start > 1;
+        if (isFirst) {
+          const bw = 36, bh = 42, bx = 1, by = yy - bh / 2;
+          return (
+            <g key={fretNum}>
+              <rect x={bx} y={by} width={bw} height={bh} rx={6} fill="#1d4ed8" />
+              <text x={bx + bw / 2} y={yy - 4} fill="white" fontSize={26}
+                fontWeight="bold" textAnchor="middle" dominantBaseline="middle">
+                {fretNum}
+              </text>
+              <text x={bx + bw / 2} y={by + bh - 7} fill="rgba(255,255,255,0.7)" fontSize={9}
+                fontWeight="bold" textAnchor="middle" dominantBaseline="middle">fr</text>
+            </g>
+          );
+        }
+        return (
+          <text key={fretNum} x={neckL - 4} y={yy} fill="#2d3d4f" fontSize={8}
+            fontWeight="bold" textAnchor="end" dominantBaseline="middle">
+            {fretNum}
+          </text>
+        );
+      })}
+
+      {/* Indicadores: cuerda abierta (O) o apagada (X) */}
+      {chord.frets.map((fret, si) => {
+        const cx = sX(si);
+        if (fret === -1) {
+          const s = 5;
+          return <g key={si}>
+            <line x1={cx-s} y1={openY-s} x2={cx+s} y2={openY+s} stroke="#ef4444" strokeWidth={1.8} strokeLinecap="round" />
+            <line x1={cx+s} y1={openY-s} x2={cx-s} y2={openY+s} stroke="#ef4444" strokeWidth={1.8} strokeLinecap="round" />
+          </g>;
+        }
+        if (fret === 0)
+          return <circle key={si} cx={cx} cy={openY} r={4.5} fill="none" stroke="#10b981" strokeWidth={1.6} />;
+        return null;
+      })}
+
+      {/* Cejilla (barre) */}
+      {chord.barre && (() => {
+        const yy = cy(chord.barre.fret);
+        const x1 = sX(chord.barre.from), x2 = sX(chord.barre.to);
+        return <rect key="barre" x={x1} y={yy - r * 0.85} width={x2-x1}
+                 height={r * 1.7} rx={r} fill="rgba(13,148,136,0.90)" />;
+      })()}
+
+      {/* Puntos de dedos */}
+      {chord.frets.map((fret, si) => {
+        if (fret <= 0) return null;
+        const inBarre = chord.barre && fret === chord.barre.fret
+                     && si >= chord.barre.from && si <= chord.barre.to;
+        if (inBarre) return null;
+        const yy = cy(fret), cx = sX(si), fn = chord.fingers?.[si] ?? 0;
+        return (
+          <g key={si}>
+            <circle cx={cx} cy={yy} r={r} fill="#14b8a6" opacity={0.94} />
+            {fn > 0 && <text x={cx} y={yy} fill="white" fontSize={r * 0.95} fontWeight="bold"
+              textAnchor="middle" dominantBaseline="middle">{fn}</text>}
+          </g>
+        );
+      })}
+    </svg>
+  );
+};
+
 // ── ChordDiagram ──────────────────────────────────────────────────────────────
 const ChordDiagram: React.FC<{ chord: ChordDef; width?: number; height?: number }> = ({ chord, width = 100, height = 120 }) => {
   const strings = 6;
@@ -163,20 +329,41 @@ const ChordDiagram: React.FC<{ chord: ChordDef; width?: number; height?: number 
 };
 
 // ── StrumVisual ───────────────────────────────────────────────────────────────
-const StrumVisual: React.FC<{ pattern: StrumPattern; className?: string; animate?: boolean }> = ({ pattern, className = '', animate = true }) => (
+const StrumVisual: React.FC<{ pattern: StrumPattern; activeIdx?: number; className?: string }> = ({ pattern, activeIdx = -1, className = '' }) => (
   <div className={`flex flex-col items-center gap-2 ${className}`}>
     <span className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">{pattern.name}</span>
-    <div className="flex flex-wrap gap-2 md:gap-3 bg-slate-900/50 p-3 rounded-xl border border-slate-700/50 justify-center">
+    <div className="flex flex-wrap gap-1.5 md:gap-2 justify-center">
       {pattern.strokes.map((stroke, i) => {
-        const animStyle = animate ? { animationDelay: `${i * 0.15}s`, animationDuration: '1.5s' } : {};
-        const animClass = animate ? 'animate-bounce' : '';
+        const isActive = i === activeIdx;
+        const arrow = stroke === 'D' ? '↓' : stroke === 'U' ? '↑' : stroke === 'DL' ? '⇓' : '·';
+        const glowColor = stroke === 'DL' ? 'rgba(251,191,36,0.85)' : stroke === 'D' ? 'rgba(94,234,212,0.85)' : stroke === 'U' ? 'rgba(96,165,250,0.85)' : 'rgba(148,163,184,0.5)';
+        const baseStyle = stroke === 'DL'
+          ? { background: '#92400e', borderColor: '#f59e0b', color: '#fde68a' }
+          : stroke === 'D'
+          ? { background: '#0f4f4a', borderColor: '#2dd4bf', color: '#99f6e4' }
+          : stroke === 'U'
+          ? { background: '#1e3a8a', borderColor: '#60a5fa', color: '#bfdbfe' }
+          : { background: '#1e293b', borderColor: '#475569', color: '#94a3b8' };
+        const activeStyle = stroke === 'DL'
+          ? { background: '#b45309', borderColor: '#fbbf24', color: '#fef3c7' }
+          : stroke === 'D'
+          ? { background: '#0f766e', borderColor: '#34d399', color: '#d1fae5' }
+          : stroke === 'U'
+          ? { background: '#1d4ed8', borderColor: '#7dd3fc', color: '#dbeafe' }
+          : { background: '#374151', borderColor: '#6b7280', color: '#e5e7eb' };
         return (
-          <div key={i} className="flex flex-col items-center justify-center w-6 md:w-8 h-10">
-            {stroke === 'D'  && <IconDown cls={`w-6 h-6 md:w-8 md:h-8 text-teal-400 ${animClass}`} style={animStyle} />}
-            {stroke === 'U'  && <IconUp   cls={`w-6 h-6 md:w-8 md:h-8 text-teal-400 ${animClass}`} style={animStyle} />}
-            {stroke === 'DL' && <span className={`text-amber-400 font-black text-lg leading-none ${animClass}`} style={animStyle}>⇓</span>}
-            {stroke === '-'  && <IconMinus />}
-            <div className="w-1 h-1 rounded-full bg-slate-700 mt-2" />
+          <div key={i} className="flex flex-col items-center gap-0.5">
+            <span style={{ fontSize: 8, fontWeight: 700, color: isActive ? '#fff' : '#94a3b8' }}>{i + 1}</span>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 30, height: 38, borderRadius: 8, border: '2px solid',
+              fontSize: 16, fontWeight: 900, userSelect: 'none',
+              transition: 'background 0.08s ease, border-color 0.08s ease, color 0.08s ease, box-shadow 0.08s ease',
+              boxShadow: isActive ? `0 0 10px ${glowColor.replace('0.85','0.5')}` : `0 0 6px ${glowColor.replace('0.85','0.3')}`,
+              ...(isActive ? activeStyle : baseStyle),
+            }}>
+              {arrow}
+            </div>
           </div>
         );
       })}
@@ -233,23 +420,34 @@ interface Props { song: SongData; transposeSteps: number; onClose: () => void; }
 export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }) => {
   const [activeLineId, setActiveLineId]         = useState<string | null>(null);
   const [selectedChord, setSelectedChord]       = useState<string | null>(null);
-  const [bpm, setBpm]                           = useState(100);
+  // Estado cargado sincrónicamente desde localStorage para evitar race conditions
+  const [bpm, setBpm]                           = useState<number>(() => {
+    try { const g = localStorage.getItem('chordplay_global'); if (g) { const p = JSON.parse(g); if (typeof p.bpm === 'number') return p.bpm; } } catch (_) {} return 100;
+  });
+  const [activePatternId, setActivePatternId]   = useState<string>(() => {
+    try { const g = localStorage.getItem('chordplay_global'); if (g) { const p = JSON.parse(g); if (typeof p.patternId === 'string') return p.patternId; } } catch (_) {} return UNIVERSAL_PATTERNS[0].id;
+  });
+  const [dlDelay, setDlDelay]                   = useState<number>(() => {
+    try { const g = localStorage.getItem('chordplay_global'); if (g) { const p = JSON.parse(g); if (typeof p.dlDelay === 'number') return p.dlDelay; } } catch (_) {} return 0.10;
+  });
+  const [customPatterns, setCustomPatterns]     = useState<StrumPattern[]>(() => {
+    try { const s = localStorage.getItem('chordplay_custom_patterns'); if (s) return JSON.parse(s); } catch (_) {} return [];
+  });
   const [isPlayingAll, setIsPlayingAll]         = useState(false);
   const [sectionMeasures, setSectionMeasures]   = useState<Record<number, number>>({});
   const [segMeasures, setSegMeasures]           = useState<Record<string, number>>({});
-  const [customPatterns, setCustomPatterns]     = useState<StrumPattern[]>([]);
-  const [activePatternId, setActivePatternId]   = useState<string>(UNIVERSAL_PATTERNS[0].id);
   const [isEditingPattern, setIsEditingPattern] = useState(false);
   const [builderStrokes, setBuilderStrokes]     = useState<StrokeType[]>(['D', '-', 'D', 'U', '-', 'U', 'D', 'U']);
   const [builderName, setBuilderName]           = useState('');
   const [editingPatternId, setEditingPatternId] = useState<string | null>(null);
-  const [dlDelay, setDlDelay]                   = useState(0.10);
   const [ttStrokeIdx, setTtStrokeIdx]           = useState(-1);
   const [savedOk, setSavedOk]                   = useState(false);
   const [playingOverlay, setPlayingOverlay]     = useState<PlayingOverlayState | null>(null);
   const [showTikTokMode, setShowTikTokMode]     = useState(false);
   const timeoutsRef        = useRef<ReturnType<typeof setTimeout>[]>([]);
   const ttLyricsScrollRef  = useRef<HTMLDivElement>(null);
+  const cloudReadyRef      = useRef(false);
+  const cloudSaveTimerRef  = useRef<ReturnType<typeof setTimeout>>();
 
   const songKey = useMemo(
     () => `${song.title}_${song.artist}`.replace(/\s+/g, '_'),
@@ -301,24 +499,7 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
     });
   }, [playSections]);
 
-  // Cargar configuración global (bpm, patrón, dlDelay) al montar
-  useEffect(() => {
-    try {
-      const g = localStorage.getItem('chordplay_global');
-      if (g) {
-        const { bpm: b, patternId, dlDelay: dl } = JSON.parse(g);
-        if (typeof b === 'number') setBpm(b);
-        if (typeof patternId === 'string') setActivePatternId(patternId);
-        if (typeof dl === 'number') setDlDelay(dl);
-      }
-    } catch (_) {}
-  }, []);
-
-  // Cargar patrones personalizados
-  useEffect(() => {
-    const saved = localStorage.getItem('chordplay_custom_patterns');
-    if (saved) { try { setCustomPatterns(JSON.parse(saved)); } catch (_) {} }
-  }, []);
+  // Auto-guardar patrones personalizados
   useEffect(() => {
     localStorage.setItem('chordplay_custom_patterns', JSON.stringify(customPatterns));
   }, [customPatterns]);
@@ -338,6 +519,52 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
     const saved = localStorage.getItem(sectionStorageKey);
     if (saved) { try { setSectionMeasures(JSON.parse(saved)); } catch (_) {} }
   }, [sectionStorageKey]);
+  useEffect(() => {
+    if (Object.keys(sectionMeasures).length > 0)
+      localStorage.setItem(sectionStorageKey, JSON.stringify(sectionMeasures));
+  }, [sectionMeasures, sectionStorageKey]);
+
+  // Auto-guardar configuración global (bpm, patrón, velocidad de barrido)
+  useEffect(() => {
+    localStorage.setItem('chordplay_global', JSON.stringify({ bpm, patternId: activePatternId, dlDelay }));
+  }, [bpm, activePatternId, dlDelay]);
+
+  // ── Sincronización con Supabase (cross-device) ────────────────────────────────
+  // Carga desde la nube al montar; Supabase tiene prioridad sobre localStorage.
+  useEffect(() => {
+    loadChordPlayConfig(songKey).then(cfg => {
+      if (cfg) {
+        if (typeof cfg.bpm === 'number') setBpm(cfg.bpm);
+        if (typeof cfg.patternId === 'string') setActivePatternId(cfg.patternId);
+        if (typeof cfg.dlDelay === 'number') setDlDelay(cfg.dlDelay);
+        if (Array.isArray(cfg.customPatterns)) setCustomPatterns(cfg.customPatterns as StrumPattern[]);
+        if (cfg.sectionMeasures && typeof cfg.sectionMeasures === 'object') {
+          // JSON convierte claves numéricas a strings; reconvertimos
+          const sm: Record<number, number> = {};
+          Object.entries(cfg.sectionMeasures).forEach(([k, v]) => { sm[Number(k)] = v; });
+          setSectionMeasures(sm);
+        }
+        if (cfg.segMeasures && typeof cfg.segMeasures === 'object') {
+          setSegMeasures(cfg.segMeasures as Record<string, number>);
+        }
+      }
+      cloudReadyRef.current = true;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songKey]);
+
+  // Guarda en Supabase (debounced 2 s) solo después de que la carga inicial termine
+  useEffect(() => {
+    if (!cloudReadyRef.current) return;
+    clearTimeout(cloudSaveTimerRef.current);
+    cloudSaveTimerRef.current = setTimeout(() => {
+      saveChordPlayConfig(songKey, {
+        bpm, patternId: activePatternId, dlDelay,
+        customPatterns, sectionMeasures, segMeasures,
+      });
+    }, 2000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bpm, activePatternId, dlDelay, customPatterns, sectionMeasures, segMeasures]);
 
   const allPatterns   = useMemo(() => [...UNIVERSAL_PATTERNS, ...customPatterns], [customPatterns]);
   const activePattern = useMemo(() => allPatterns.find(p => p.id === activePatternId) || UNIVERSAL_PATTERNS[0], [allPatterns, activePatternId]);
@@ -743,7 +970,7 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
                     {/* Preview del patrón activo + botones Editar / Eliminar */}
                     <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700 flex items-center gap-2">
                       <div className="flex-1 min-w-0">
-                        <StrumVisual pattern={activePattern} animate={false} />
+                        <StrumVisual pattern={activePattern} />
                       </div>
                       <button
                         onClick={() => {
@@ -958,7 +1185,7 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
             <h3 className="text-xl font-bold text-white mb-6 text-center w-full border-b border-slate-700 pb-2">Detalle del Acorde</h3>
             {chordDictionary[selectedChord] ? (
               <div className="flex flex-col items-center gap-6">
-                <ChordDiagram chord={chordDictionary[selectedChord]} width={180} height={220} />
+                <RealFretboardDiagram chord={chordDictionary[selectedChord]} width={180} />
                 <button
                   onClick={() => handleChordClick(selectedChord, undefined, undefined, 1)}
                   className="flex items-center gap-2 bg-teal-600 hover:bg-teal-500 text-white px-6 py-3 rounded-full font-medium transition-colors shadow-lg"
@@ -1020,12 +1247,12 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
 
                   {chordDictionary[playingOverlay.chord] && (
                     <div className="bg-slate-900/50 p-3 rounded-xl shadow-lg">
-                      <ChordDiagram chord={chordDictionary[playingOverlay.chord]} width={140} height={170} />
+                      <RealFretboardDiagram chord={chordDictionary[playingOverlay.chord]} width={140} />
                     </div>
                   )}
                 </div>
                 <div className="bg-slate-900/80 px-6 py-4 rounded-2xl border border-slate-700 flex flex-col items-center justify-center shadow-lg">
-                  <StrumVisual pattern={playingOverlay.pattern} animate={true} />
+                  <StrumVisual pattern={playingOverlay.pattern} activeIdx={ttStrokeIdx} />
                 </div>
               </div>
 
@@ -1147,13 +1374,13 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
                     {playingOverlay.chord}
                   </span>
                   {chordDictionary[playingOverlay.chord] && (
-                    <ChordDiagram chord={chordDictionary[playingOverlay.chord]} width={88} height={108} />
+                    <RealFretboardDiagram chord={chordDictionary[playingOverlay.chord]} width={88} />
                   )}
                   {nextChordInSong && chordDictionary[nextChordInSong] && (
                     <div className="flex flex-col items-center gap-0.5 opacity-35">
                       <span className="text-[8px] text-slate-500 uppercase tracking-wider">Siguiente</span>
                       <span className="text-teal-500 font-black text-[10px]">{nextChordInSong}</span>
-                      <ChordDiagram chord={chordDictionary[nextChordInSong]} width={44} height={54} />
+                      <RealFretboardDiagram chord={chordDictionary[nextChordInSong]} width={44} />
                     </div>
                   )}
                 </div>
@@ -1183,37 +1410,34 @@ export const ChordPlayView: React.FC<Props> = ({ song, transposeSteps, onClose }
                       : stroke === 'U'
                       ? 'rgba(96,165,250,0.85)'
                       : 'rgba(148,163,184,0.5)';
+                    const baseStyle = stroke === 'DL'
+                      ? { background: '#92400e', borderColor: '#f59e0b', color: '#fde68a' }
+                      : stroke === 'D'
+                      ? { background: '#0f4f4a', borderColor: '#2dd4bf', color: '#99f6e4' }
+                      : stroke === 'U'
+                      ? { background: '#1e3a8a', borderColor: '#60a5fa', color: '#bfdbfe' }
+                      : { background: '#1e293b', borderColor: '#475569', color: '#94a3b8' };
+                    const activeStyle = stroke === 'DL'
+                      ? { background: '#b45309', borderColor: '#fbbf24', color: '#fef3c7' }
+                      : stroke === 'D'
+                      ? { background: '#0f766e', borderColor: '#34d399', color: '#d1fae5' }
+                      : stroke === 'U'
+                      ? { background: '#1d4ed8', borderColor: '#7dd3fc', color: '#dbeafe' }
+                      : { background: '#374151', borderColor: '#6b7280', color: '#e5e7eb' };
                     return (
                       <div key={i} className="flex flex-col items-center gap-0.5" style={{ width: 34 }}>
-                        {/* Número de golpe */}
                         <span style={{
                           fontSize: 8, fontWeight: 700, lineHeight: 1,
                           transition: 'color 0.08s ease',
-                          color: isActive ? '#fff' : '#334155',
+                          color: isActive ? '#fff' : '#94a3b8',
                         }}>{i + 1}</span>
-                        {/* Celda — tamaño fijo, solo cambia color y glow */}
                         <div style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           width: 30, height: 38, borderRadius: 8, border: '2px solid',
                           fontSize: 16, fontWeight: 900, userSelect: 'none',
                           transition: 'background 0.08s ease, border-color 0.08s ease, color 0.08s ease, box-shadow 0.08s ease',
-                          boxShadow: isActive ? `0 0 14px ${glowColor}` : 'none',
-                          ...(isActive
-                            ? stroke === 'DL'
-                              ? { background: '#d97706', borderColor: '#fcd34d', color: '#fff' }
-                              : stroke === 'D'
-                              ? { background: '#0d9488', borderColor: '#5eead4', color: '#fff' }
-                              : stroke === 'U'
-                              ? { background: '#2563eb', borderColor: '#93c5fd', color: '#fff' }
-                              : { background: '#475569', borderColor: '#94a3b8', color: '#fff' }
-                            : stroke === 'DL'
-                            ? { background: 'rgba(120,53,15,0.35)', borderColor: 'rgba(120,53,15,0.5)', color: '#78350f', opacity: 0.55 }
-                            : stroke === 'D'
-                            ? { background: 'rgba(19,78,74,0.35)', borderColor: 'rgba(20,83,79,0.5)', color: '#134e4a', opacity: 0.55 }
-                            : stroke === 'U'
-                            ? { background: 'rgba(30,58,138,0.35)', borderColor: 'rgba(30,64,175,0.5)', color: '#1e3a8a', opacity: 0.55 }
-                            : { background: 'rgba(30,41,59,0.4)', borderColor: 'rgba(51,65,85,0.4)', color: '#334155', opacity: 0.4 }
-                          ),
+                          boxShadow: isActive ? `0 0 10px ${glowColor.replace('0.85', '0.5')}` : `0 0 6px ${glowColor.replace('0.85', '0.3')}`,
+                          ...(isActive ? activeStyle : baseStyle),
                         }}>
                           {arrow}
                         </div>
