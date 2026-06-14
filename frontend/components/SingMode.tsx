@@ -31,7 +31,7 @@ const BigDiagram: React.FC<{ shape: ChordShape; color: string }> = ({ shape, col
   const toRow = (f: number) => f - shape.baseFret + 1;
   return (
     <div className="flex flex-col items-center">
-      {shape.baseFret > 1 && <span className="text-white/40 text-xs mb-1">Tr.{shape.baseFret}</span>}
+      <span className="text-white/40 text-xs mb-1">Tr.{shape.baseFret}</span>
       <svg width={W} height={H} className="text-white/70" overflow="visible">
         {shape.baseFret === 1 && <rect x={sx(0)} y={fy(0)-2.5} width={sx(5)-sx(0)} height={4} rx={2} fill="currentColor" />}
         {[0,1,2,3,4,5].map(s => <line key={s} x1={sx(s)} y1={fy(0)} x2={sx(s)} y2={fy(nFrets)} stroke="currentColor" strokeWidth={1.3} />)}

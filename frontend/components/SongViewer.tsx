@@ -49,12 +49,8 @@ const SmallChordDiagram: React.FC<{ chordName: string; shape: ChordShape; onClic
     >
       <span className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-1 leading-none">{chordName}</span>
       <svg width={W} height={H} className="text-gray-800 dark:text-gray-200" overflow="visible">
-        {shape.baseFret > 1 && (
-          <>
-            <rect x={(W - 56) / 2} y={6} width={56} height={14} rx={7} fill="currentColor" opacity={0.1} />
-            <text x={W / 2} y={17} textAnchor="middle" fontSize={8} fontWeight="700" fill="currentColor">Traste {shape.baseFret}</text>
-          </>
-        )}
+        <rect x={(W - 56) / 2} y={6} width={56} height={14} rx={7} fill="currentColor" opacity={0.1} />
+        <text x={W / 2} y={17} textAnchor="middle" fontSize={8} fontWeight="700" fill="currentColor">Traste {shape.baseFret}</text>
         {shape.baseFret === 1 && <rect x={sx(0)} y={fy(0) - 2} width={sx(5) - sx(0)} height={3} rx={1} fill="currentColor" />}
         {[0,1,2,3,4,5].map(s => <line key={s} x1={sx(s)} y1={fy(0)} x2={sx(s)} y2={fy(numFrets)} stroke="currentColor" strokeWidth={0.8} />)}
         {Array.from({ length: numFrets + 1 }, (_, i) => <line key={i} x1={sx(0)} y1={fy(i)} x2={sx(5)} y2={fy(i)} stroke="currentColor" strokeWidth={0.8} />)}
@@ -94,11 +90,9 @@ const TinyChordDiagram: React.FC<{ shape: ChordShape; onClick: () => void; brigh
   return (
     <button onClick={onClick} title="Ver diagrama completo" className="hover:opacity-70 transition-opacity focus:outline-none flex flex-col items-start">
       <div style={{ height: 10 }} className="flex items-center justify-start w-full">
-        {shape.baseFret > 1 && (
-          <span className={`text-[8px] font-bold leading-none px-0.5 rounded ${bright ? 'bg-cyan-900/60 text-cyan-300' : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'}`}>
-            Tr.{shape.baseFret}
-          </span>
-        )}
+        <span className={`text-[8px] font-bold leading-none px-0.5 rounded ${bright ? 'bg-cyan-900/60 text-cyan-300' : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'}`}>
+          Tr.{shape.baseFret}
+        </span>
       </div>
       <svg width={W} height={H} className={bright ? 'text-cyan-400 block' : 'text-blue-700 dark:text-blue-400 block'} overflow="visible">
         {shape.baseFret === 1 && (
@@ -146,7 +140,7 @@ const FloatChordDiagramSVG: React.FC<{ shape: ChordShape; color: string; size?: 
   const fs = size === 'md' ? 9 : 7;
   return (
     <div className="flex flex-col items-center">
-      {shape.baseFret > 1 && <span className="text-white/60 text-xs mb-0.5 leading-none">Tr.{shape.baseFret}</span>}
+      <span className="text-white/60 text-xs mb-0.5 leading-none">Tr.{shape.baseFret}</span>
       <svg width={W} height={H} className="text-white/90" overflow="visible">
         {shape.baseFret === 1 && <rect x={sx(0)} y={fy(0)-2.5} width={sx(5)-sx(0)} height={3.5} rx={1.5} fill="currentColor" />}
         {[0,1,2,3,4,5].map(s => <line key={s} x1={sx(s)} y1={fy(0)} x2={sx(s)} y2={fy(nFrets)} stroke="currentColor" strokeWidth={0.9} />)}

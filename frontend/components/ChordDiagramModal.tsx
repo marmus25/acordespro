@@ -55,9 +55,7 @@ export const ChordDiagramModal: React.FC<Props> = ({ chordName, onClose }) => {
           ) : (
             <>
               <svg width={W} height={H} className="text-gray-800 dark:text-gray-100" overflow="visible">
-                {shape.baseFret > 1 && (
-                  <text x={sx(5) + 7} y={fy(1) + 5} fontSize={10} fill="currentColor">{shape.baseFret}fr</text>
-                )}
+                <text x={sx(5) + 7} y={fy(1) + 5} fontSize={10} fill="currentColor">{shape.baseFret}fr</text>
                 {shape.baseFret === 1 && (
                   <rect x={sx(0)} y={fy(0) - 3} width={sx(5) - sx(0)} height={5} rx={1} fill="currentColor" />
                 )}

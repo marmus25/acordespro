@@ -211,7 +211,7 @@ export const PracticePanel: React.FC<Props> = ({
     diagramEl = (
       <div className="flex flex-col items-center shrink-0">
         <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 leading-none mb-0.5">{activeChord}</span>
-        {shape.baseFret > 1 && <span className="text-[8px] text-gray-500 leading-none mb-0.5">Tr.{shape.baseFret}</span>}
+        <span className="text-[8px] text-gray-500 leading-none mb-0.5">Tr.{shape.baseFret}</span>
         <svg width={W} height={H} className="text-gray-800 dark:text-gray-200" overflow="visible">
           {shape.baseFret === 1 && <rect x={sx(0)} y={fy(0)-2} width={sx(5)-sx(0)} height={2.5} rx={1} fill="currentColor" />}
           {[0,1,2,3,4,5].map(s => <line key={s} x1={sx(s)} y1={fy(0)} x2={sx(s)} y2={fy(nFrets)} stroke="currentColor" strokeWidth={0.75} />)}
