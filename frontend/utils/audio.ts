@@ -359,10 +359,12 @@ const playString = (
   const source = ctx.createBufferSource();
   const gain   = ctx.createGain();
   source.buffer = buffer;
-  source.playbackRate.value = Math.pow(2, (targetMidi - baseMidi) / 12);
+  // Microafinación: ±0.4% aleatorio — cuerdas nunca perfectamente afinadas entre sí
+  const pitchRatio = Math.pow(2, (targetMidi - baseMidi) / 12);
+  source.playbackRate.value = pitchRatio * (1 + (Math.random() - 0.5) * 0.008);
   const decay  = STRING_DECAY[stringIndex] ?? 1.0;
   // Ataque suave tipo dedo/nylon — no instántaneo como púa de acero
-  const attack = 0.006 + stringIndex * 0.001; // graves un poco más lentos
+  const attack = 0.006 + stringIndex * 0.001;
   gain.gain.setValueAtTime(0.001, startTime);
   gain.gain.linearRampToValueAtTime(vol, startTime + attack);
   gain.gain.exponentialRampToValueAtTime(0.001, startTime + attack + decay);
@@ -392,6 +394,42 @@ export const playChordAudio = (frets: (number | 'x' | 'o')[]) => {
   });
 };
 
+// Humanización de rasgueo: simula la mano de un guitarrista real
+const humanStrum = (
+  order: { fret: number | 'x' | 'o'; si: number }[],
+  isDown: boolean,
+  baseDelay: number,
+  startTime: number,
+  vol: number
+) => {
+  const n = order.length;
+  order.forEach(({ fret, si }, i) => {
+    const fn = fret === 'o' ? 0 : (fret as number);
+
+    // 1. Timing: jitter ±3ms — la mano nunca es perfectamente uniforme
+    const jitter = (Math.random() - 0.5) * 0.006;
+
+    // 2. Velocidad de barrido variable: ligera aceleración hacia el final
+    const sweep = baseDelay * (1 + i * 0.04);
+
+    // 3. Dinámica de barrido: downstroke más fuerte en agudos (aceleración de muñeca)
+    //    upstroke más fuerte en graves
+    const dynPos  = i / Math.max(n - 1, 1);
+    const dynCurve = isDown
+      ? 0.82 + dynPos * 0.18          // crece hacia las agudas
+      : 1.0  - dynPos * 0.18;         // decrece hacia las bajas
+
+    // 4. Variación aleatoria de velocidad por cuerda ±8%
+    const velVar = 1 + (Math.random() - 0.5) * 0.16;
+
+    // 5. Balance base: cuerda E grave más suave
+    const baseBal = si === 0 ? 0.78 : si === 1 ? 0.88 : 1.0;
+
+    const v = Math.min(0.98, vol * baseBal * dynCurve * velVar);
+    playString(si, fn, startTime + i * sweep + jitter, v);
+  });
+};
+
 export const scheduleStrum = (
   direction: 'D' | 'U' | 'DL',
   frets: (number | 'x' | 'o')[],
@@ -403,12 +441,7 @@ export const scheduleStrum = (
   const delay  = direction === 'DL' ? dlDelay : 0.014;
   const active = frets.map((f, i) => ({ fret: f, si: i })).filter(s => s.fret !== 'x');
   const order  = isDown ? active : [...active].reverse();
-  order.forEach(({ fret, si }, i) => {
-    const fn = fret === 'o' ? 0 : (fret as number);
-    // Cuerdas bajas ligeramente más suaves — balance natural de rasgueo
-    const v  = si === 0 ? vol * 0.78 : si === 1 ? vol * 0.88 : vol;
-    playString(si, fn, startTime + i * delay, v);
-  });
+  humanStrum(order, isDown, delay, startTime, vol);
 };
 
 export const getCtxTime = (): number => getAudioContext().currentTime;
@@ -437,9 +470,5 @@ export const playStrum = (
   const delay  = direction === 'DL' ? 0.10 : 0.014;
   const active = frets.map((f, i) => ({ fret: f, si: i })).filter(s => s.fret !== 'x');
   const order  = isDown ? active : [...active].reverse();
-  order.forEach(({ fret, si }, i) => {
-    const fn  = fret === 'o' ? 0 : (fret as number);
-    const vol = si <= 1 ? 0.72 : 0.88;
-    playString(si, fn, now + i * delay, vol);
-  });
+  humanStrum(order, isDown, delay, now, 0.82);
 };
