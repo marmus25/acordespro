@@ -6,39 +6,36 @@ const getAudioContext = () => {
   return audioCtx;
 };
 
-// ── Capas de samples ──────────────────────────────────────────────────────────
+// ── Samples Guitarra Española (nylón real, stereo, 1.25–6s) ──────────────────
 type SampleLayer = { midi: number; file: string };
 
-// Guitar Acordes (NB) — 46 samples cromáticos E2-C#6 (MIDI 40-85), un semitono por archivo
-// Máxima resolución: pitch shift <= 0.5 semitonos desde el sample más cercano
-const SAMPLES_NB: SampleLayer[] = Array.from({ length: 46 }, (_, i) => ({
-  midi: 40 + i,
-  file: `/samples/NB_L1-2_UP-A_${String(i + 1).padStart(2, '0')}.wav`,
-}));
-
-// iSGtr _p (piano/suave) — fallback para velocidades bajas
-const SAMPLES_P: SampleLayer[] = [
-  { midi: 40, file: '/samples/iSGtr_E2_p.wav'  }, { midi: 41, file: '/samples/iSGtr_F2_p.wav'  },
-  { midi: 42, file: '/samples/iSGtr_F#2_p.wav' }, { midi: 43, file: '/samples/iSGtr_G2_p.wav'  },
-  { midi: 44, file: '/samples/iSGtr_G#2_p.wav' }, { midi: 45, file: '/samples/iSGtr_A2_p.wav'  },
-  { midi: 46, file: '/samples/iSGtr_A#2_p.wav' }, { midi: 47, file: '/samples/iSGtr_B2_p.wav'  },
-  { midi: 48, file: '/samples/iSGtr_C3_p.wav'  }, { midi: 49, file: '/samples/iSGtr_C#3_p.wav' },
-  { midi: 50, file: '/samples/iSGtr_D3_p.wav'  }, { midi: 51, file: '/samples/iSGtr_D#3_p.wav' },
-  { midi: 52, file: '/samples/iSGtr_E3_p.wav'  }, { midi: 53, file: '/samples/iSGtr_F3_p.wav'  },
-  { midi: 54, file: '/samples/iSGtr_F#3_p.wav' }, { midi: 55, file: '/samples/iSGtr_G3_p.wav'  },
-  { midi: 56, file: '/samples/iSGtr_G#3_p.wav' }, { midi: 57, file: '/samples/iSGtr_A3_p.wav'  },
-  { midi: 58, file: '/samples/iSGtr_A#3_p.wav' }, { midi: 59, file: '/samples/iSGtr_B3_p.wav'  },
-  { midi: 60, file: '/samples/iSGtr_C4_p.wav'  }, { midi: 62, file: '/samples/iSGtr_D4_p.wav'  },
-  { midi: 63, file: '/samples/iSGtr_D#4_p.wav' }, { midi: 64, file: '/samples/iSGtr_E4_p.wav'  },
-  { midi: 65, file: '/samples/iSGtr_F4_p.wav'  }, { midi: 66, file: '/samples/iSGtr_F#4_p.wav' },
-  { midi: 67, file: '/samples/iSGtr_G4_p.wav'  }, { midi: 68, file: '/samples/iSGtr_G#4_p.wav' },
-  { midi: 69, file: '/samples/iSGtr_A4_p.wav'  }, { midi: 70, file: '/samples/iSGtr_A#4_p.wav' },
-  { midi: 71, file: '/samples/iSGtr_B4_p.wav'  }, { midi: 74, file: '/samples/iSGtr_D5_p.wav'  },
-  { midi: 75, file: '/samples/iSGtr_D#5_p.wav' }, { midi: 76, file: '/samples/iSGtr_E5_p.wav'  },
+// 22 samples: E2–B5, stereo 44100Hz 16bit — duración suficiente sin loop
+const SAMPLES_ESP: SampleLayer[] = [
+  { midi: 40, file: '/samples/GuitarEspaña_E2.wav'  },
+  { midi: 41, file: '/samples/GuitarEspaña_F2.wav'  },
+  { midi: 43, file: '/samples/GuitarEspaña_G2.wav'  },
+  { midi: 45, file: '/samples/GuitarEspaña_A2.wav'  },
+  { midi: 50, file: '/samples/GuitarEspaña_D3.wav'  },
+  { midi: 51, file: '/samples/GuitarEspaña_D#3.wav' },
+  { midi: 53, file: '/samples/GuitarEspaña_F3.wav'  },
+  { midi: 56, file: '/samples/GuitarEspaña_G#3.wav' },
+  { midi: 59, file: '/samples/GuitarEspaña_B3.wav'  },
+  { midi: 60, file: '/samples/GuitarEspaña_C4.wav'  },
+  { midi: 62, file: '/samples/GuitarEspaña_D4.wav'  },
+  { midi: 64, file: '/samples/GuitarEspaña_E4.wav'  },
+  { midi: 65, file: '/samples/GuitarEspaña_F4.wav'  },
+  { midi: 67, file: '/samples/GuitarEspaña_G4.wav'  },
+  { midi: 69, file: '/samples/GuitarEspaña_A4.wav'  },
+  { midi: 71, file: '/samples/GuitarEspaña_B4.wav'  },
+  { midi: 73, file: '/samples/GuitarEspaña_C#5.wav' },
+  { midi: 75, file: '/samples/GuitarEspaña_D#5.wav' },
+  { midi: 77, file: '/samples/GuitarEspaña_F5.wav'  },
+  { midi: 79, file: '/samples/GuitarEspaña_G5.wav'  },
+  { midi: 81, file: '/samples/GuitarEspaña_A5.wav'  },
+  { midi: 83, file: '/samples/GuitarEspaña_B5.wav'  },
 ];
 
 const bufferNB: Map<number, AudioBuffer> = new Map();
-const bufferP:  Map<number, AudioBuffer> = new Map();
 let samplesReady = false;
 
 const loadLayer = async (ctx: AudioContext, list: SampleLayer[], map: Map<number, AudioBuffer>) =>
@@ -53,8 +50,7 @@ const loadLayer = async (ctx: AudioContext, list: SampleLayer[], map: Map<number
 const preloadBaseSamples = async () => {
   if (samplesReady) return;
   const ctx = getAudioContext();
-  // NB carga primero (son los principales), _p en paralelo como capa suave
-  await Promise.all([loadLayer(ctx, SAMPLES_NB, bufferNB), loadLayer(ctx, SAMPLES_P, bufferP)]);
+  await loadLayer(ctx, SAMPLES_ESP, bufferNB);
   samplesReady = true;
 };
 
@@ -68,10 +64,7 @@ const nearest = (map: Map<number, AudioBuffer>, midi: number) => {
   return { buffer, baseMidi };
 };
 
-const getBuffer = (midi: number, vol: number) =>
-  vol >= 0.55
-    ? nearest(bufferNB, midi) ?? nearest(bufferP, midi)
-    : nearest(bufferP, midi)  ?? nearest(bufferNB, midi);
+const getBuffer = (midi: number, _vol: number) => nearest(bufferNB, midi);
 
 // ── Impulso tipo sala de guitarra: reflexiones tempranas + cola difusa ────────
 const buildImpulse = (ctx: BaseAudioContext): AudioBuffer => {
@@ -249,7 +242,7 @@ export const setPracticeReverb = (wetPct: number) => {
 const STRING_BASE_MIDI = [40, 45, 50, 55, 59, 64];
 const STRING_DECAY     = [2.2, 1.9, 1.6, 1.4, 1.2, 1.0];
 // Panorama estéreo natural: grave izquierda → agudo derecha (como guitarra real)
-const STRING_PAN       = [-0.5, -0.3, -0.1, 0.1, 0.3, 0.5];
+const STRING_PAN       = [-0.25, -0.15, -0.05, 0.05, 0.15, 0.25]; // samples ya son stereo
 
 // ── Notas activas ─────────────────────────────────────────────────────────────
 interface ActiveNote { gain: GainNode }
@@ -289,17 +282,12 @@ const playString = (stringIndex: number, fretNum: number, startTime: number, vol
   panner.pan.value = STRING_PAN[stringIndex] + (Math.random() - 0.5) * 0.06;
 
   source.buffer = buffer;
-  // Microafinación ±0.4% — cuerdas nunca perfectamente afinadas entre sí
+  // Microafinación ±0.4%
   source.playbackRate.value = Math.pow(2, (midi - baseMidi) / 12) * (1 + (Math.random() - 0.5) * 0.008);
 
-  // Loop de la cola: ataque natural → repetir el último 30% del sample
-  // El gain envelope es quien corta — nunca el final del buffer (evita staccato)
-  source.loop      = true;
-  source.loopStart = buffer.duration * 0.70;
-  source.loopEnd   = buffer.duration;
-
-  const decay  = STRING_DECAY[stringIndex] ?? 1.0;
-  const attack = 0.006 + stringIndex * 0.001; // graves un poco más lentos
+  // Samples nylón: 1.25–6s de duración natural — sin loop, sin staccato
+  const decay  = Math.min(STRING_DECAY[stringIndex] ?? 1.0, buffer.duration * 0.92);
+  const attack = 0.006 + stringIndex * 0.001;
   gain.gain.setValueAtTime(0.001, startTime);
   gain.gain.linearRampToValueAtTime(vol, startTime + attack);
   gain.gain.exponentialRampToValueAtTime(0.001, startTime + attack + decay);
@@ -309,11 +297,7 @@ const playString = (stringIndex: number, fretNum: number, startTime: number, vol
   const note: ActiveNote = { gain };
   activeNotes.push(note);
   source.onended = () => { const i = activeNotes.indexOf(note); if (i !== -1) activeNotes.splice(i, 1); };
-
-  const t0   = Math.max(startTime, ctx.currentTime);
-  const tEnd = t0 + attack + decay + 0.05; // parar el loop justo después del fadeout
-  source.start(t0);
-  source.stop(tEnd);
+  source.start(Math.max(startTime, ctx.currentTime));
 };
 
 // ── Humanización: simula mano de guitarrista real ─────────────────────────────
