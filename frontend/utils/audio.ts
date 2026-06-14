@@ -6,30 +6,17 @@ const getAudioContext = () => {
   return audioCtx;
 };
 
-// ── Capas de velocidad ────────────────────────────────────────────────────────
+// ── Capas de samples ──────────────────────────────────────────────────────────
 type SampleLayer = { midi: number; file: string };
 
-const SAMPLES_F: SampleLayer[] = [
-  { midi: 40, file: '/samples/iSGtr_E2_f.wav'  }, { midi: 41, file: '/samples/iSGtr_F2_f.wav'  },
-  { midi: 42, file: '/samples/iSGtr_F#2_f.wav' }, { midi: 43, file: '/samples/iSGtr_G2_f.wav'  },
-  { midi: 44, file: '/samples/iSGtr_G#2_f.wav' }, { midi: 45, file: '/samples/iSGtr_A2_f.wav'  },
-  { midi: 46, file: '/samples/iSGtr_A#2_f.wav' }, { midi: 47, file: '/samples/iSGtr_B2_f.wav'  },
-  { midi: 48, file: '/samples/iSGtr_C3_f.wav'  }, { midi: 50, file: '/samples/iSGtr_D3_f.wav'  },
-  { midi: 51, file: '/samples/iSGtr_D#3_f.wav' }, { midi: 52, file: '/samples/iSGtr_E3_f.wav'  },
-  { midi: 53, file: '/samples/iSGtr_F3_f.wav'  }, { midi: 54, file: '/samples/iSGtr_F#3_f.wav' },
-  { midi: 55, file: '/samples/iSGtr_G3_f.wav'  }, { midi: 56, file: '/samples/iSGtr_G#3_f.wav' },
-  { midi: 57, file: '/samples/iSGtr_A3_f.wav'  }, { midi: 58, file: '/samples/iSGtr_A#3_f.wav' },
-  { midi: 59, file: '/samples/iSGtr_B3_f.wav'  }, { midi: 60, file: '/samples/iSGtr_C4_f.wav'  },
-  { midi: 61, file: '/samples/iSGtr_C#4_f.wav' }, { midi: 62, file: '/samples/iSGtr_D4_f.wav'  },
-  { midi: 63, file: '/samples/iSGtr_D#4_f.wav' }, { midi: 64, file: '/samples/iSGtr_E4_f.wav'  },
-  { midi: 65, file: '/samples/iSGtr_F4_f.wav'  }, { midi: 66, file: '/samples/iSGtr_F#4_f.wav' },
-  { midi: 67, file: '/samples/iSGtr_G4_f.wav'  }, { midi: 68, file: '/samples/iSGtr_G#4_f.wav' },
-  { midi: 69, file: '/samples/iSGtr_A4_f.wav'  }, { midi: 70, file: '/samples/iSGtr_A#4_f.wav' },
-  { midi: 71, file: '/samples/iSGtr_B4_f.wav'  }, { midi: 74, file: '/samples/iSGtr_D5_f.wav'  },
-  { midi: 75, file: '/samples/iSGtr_D#5_f.wav' }, { midi: 76, file: '/samples/iSGtr_E5_f.wav'  },
-  { midi: 79, file: '/samples/iSGtr_G5_f.wav'  }, { midi: 80, file: '/samples/iSGtr_G#5_f.wav' },
-];
+// Guitar Acordes (NB) — 46 samples cromáticos E2-C#6 (MIDI 40-85), un semitono por archivo
+// Máxima resolución: pitch shift <= 0.5 semitonos desde el sample más cercano
+const SAMPLES_NB: SampleLayer[] = Array.from({ length: 46 }, (_, i) => ({
+  midi: 40 + i,
+  file: `/samples/NB_L1-2_UP-A_${String(i + 1).padStart(2, '0')}.wav`,
+}));
 
+// iSGtr _p (piano/suave) — fallback para velocidades bajas
 const SAMPLES_P: SampleLayer[] = [
   { midi: 40, file: '/samples/iSGtr_E2_p.wav'  }, { midi: 41, file: '/samples/iSGtr_F2_p.wav'  },
   { midi: 42, file: '/samples/iSGtr_F#2_p.wav' }, { midi: 43, file: '/samples/iSGtr_G2_p.wav'  },
@@ -50,8 +37,8 @@ const SAMPLES_P: SampleLayer[] = [
   { midi: 75, file: '/samples/iSGtr_D#5_p.wav' }, { midi: 76, file: '/samples/iSGtr_E5_p.wav'  },
 ];
 
-const bufferF: Map<number, AudioBuffer> = new Map();
-const bufferP: Map<number, AudioBuffer> = new Map();
+const bufferNB: Map<number, AudioBuffer> = new Map();
+const bufferP:  Map<number, AudioBuffer> = new Map();
 let samplesReady = false;
 
 const loadLayer = async (ctx: AudioContext, list: SampleLayer[], map: Map<number, AudioBuffer>) =>
@@ -66,7 +53,8 @@ const loadLayer = async (ctx: AudioContext, list: SampleLayer[], map: Map<number
 const preloadBaseSamples = async () => {
   if (samplesReady) return;
   const ctx = getAudioContext();
-  await Promise.all([loadLayer(ctx, SAMPLES_F, bufferF), loadLayer(ctx, SAMPLES_P, bufferP)]);
+  // NB carga primero (son los principales), _p en paralelo como capa suave
+  await Promise.all([loadLayer(ctx, SAMPLES_NB, bufferNB), loadLayer(ctx, SAMPLES_P, bufferP)]);
   samplesReady = true;
 };
 
@@ -81,9 +69,9 @@ const nearest = (map: Map<number, AudioBuffer>, midi: number) => {
 };
 
 const getBuffer = (midi: number, vol: number) =>
-  vol >= 0.60
-    ? nearest(bufferF, midi) ?? nearest(bufferP, midi)
-    : nearest(bufferP, midi) ?? nearest(bufferF, midi);
+  vol >= 0.55
+    ? nearest(bufferNB, midi) ?? nearest(bufferP, midi)
+    : nearest(bufferP, midi)  ?? nearest(bufferNB, midi);
 
 // ── Impulso tipo sala de guitarra: reflexiones tempranas + cola difusa ────────
 const buildImpulse = (ctx: BaseAudioContext): AudioBuffer => {
@@ -367,7 +355,7 @@ export const stopAllAudio = () => muteActive(20);
 export const ensureAudio = async (): Promise<void> => {
   const ctx = getAudioContext();
   if (ctx.state !== 'running') { try { await ctx.resume(); } catch (_) {} }
-  if (bufferF.size === 0) { samplesReady = false; await preloadBaseSamples(); }
+  if (bufferNB.size === 0) { samplesReady = false; await preloadBaseSamples(); }
 };
 
 export const playStrum = (
