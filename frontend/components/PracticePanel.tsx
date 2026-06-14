@@ -4,6 +4,7 @@ import { playStrum } from '../utils/audio';
 import {
   Stroke, TimeSignature, ALL_PRESETS, TIME_SIGNATURES,
   loadCustomPresets, saveCustomPreset, deleteCustomPreset, CustomPreset,
+  savePracticePref, loadPracticePref,
 } from '../utils/strumPresets';
 
 const toAudioFrets = (shape: ChordShape): (number | 'x' | 'o')[] =>
@@ -38,12 +39,26 @@ export const PracticePanel: React.FC<Props> = ({
   sharedTs, sharedPresetIdx, onPresetChange,
   measuresOverride, onMeasuresChange,
 }) => {
-  const [selectedTs, setSelectedTs] = useState<TimeSignature>(sharedTs ?? '4/4');
-  const [presetIdx, setPresetIdx] = useState(sharedPresetIdx ?? 0);
+  const [customPresets, setCustomPresets] = useState<CustomPreset[]>(() => loadCustomPresets());
+
+  const [selectedTs, setSelectedTs] = useState<TimeSignature>(() => {
+    if (sharedTs) return sharedTs;
+    return loadPracticePref()?.ts ?? '4/4';
+  });
+
+  const [presetIdx, setPresetIdx] = useState<number>(() => {
+    if (sharedPresetIdx !== undefined) return sharedPresetIdx;
+    const pref = loadPracticePref();
+    if (!pref) return 0;
+    const customs = loadCustomPresets();
+    const allForTs = [...ALL_PRESETS.filter(p => p.ts === pref.ts), ...customs.filter(p => p.ts === pref.ts)];
+    const idx = allForTs.findIndex(p => p.name === pref.name);
+    return idx >= 0 ? idx : 0;
+  });
+
   const [customPattern, setCustomPattern] = useState<Stroke[]>(ALL_PRESETS[0].pattern);
   const [editMode, setEditMode] = useState(false);
   const [saveName, setSaveName] = useState('');
-  const [customPresets, setCustomPresets] = useState<CustomPreset[]>(() => loadCustomPresets());
   const [bpm, setBpm] = useState(80);
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeStroke, setActiveStroke] = useState(-1);
@@ -161,6 +176,7 @@ export const PracticePanel: React.FC<Props> = ({
     const name = saveName.trim() || 'Mi rasgueo';
     const timing = customPattern.map((_, i) => String(i + 1));
     saveCustomPreset({ name, ts: selectedTs, pattern: customPattern, timing });
+    savePracticePref(selectedTs, name);
     const updated = loadCustomPresets();
     setCustomPresets(updated);
     const allForTs = [...ALL_PRESETS.filter(p => p.ts === selectedTs), ...updated.filter(p => p.ts === selectedTs)];
@@ -181,6 +197,8 @@ export const PracticePanel: React.FC<Props> = ({
 
   const handleTsChange = (ts: TimeSignature) => {
     setSelectedTs(ts); setPresetIdx(0); setEditMode(false);
+    const firstForTs = [...ALL_PRESETS.filter(p => p.ts === ts), ...loadCustomPresets().filter(p => p.ts === ts)][0];
+    if (firstForTs) savePracticePref(ts, firstForTs.name);
     onPresetChange?.(ts, 0);
   };
 
@@ -211,7 +229,7 @@ export const PracticePanel: React.FC<Props> = ({
     diagramEl = (
       <div className="flex flex-col items-center shrink-0">
         <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 leading-none mb-0.5">{activeChord}</span>
-        <span className="text-[8px] text-gray-500 leading-none mb-0.5">Tr.{shape.baseFret}</span>
+        <span className="text-[10px] font-black leading-none mb-0.5 px-1 py-px rounded bg-emerald-600 text-white">{shape.baseFret}fr</span>
         <svg width={W} height={H} className="text-gray-800 dark:text-gray-200" overflow="visible">
           {shape.baseFret === 1 && <rect x={sx(0)} y={fy(0)-2} width={sx(5)-sx(0)} height={2.5} rx={1} fill="currentColor" />}
           {[0,1,2,3,4,5].map(s => <line key={s} x1={sx(s)} y1={fy(0)} x2={sx(s)} y2={fy(nFrets)} stroke="currentColor" strokeWidth={0.75} />)}
@@ -290,7 +308,7 @@ export const PracticePanel: React.FC<Props> = ({
                 const isCustom = 'custom' in p && (p as CustomPreset).custom;
                 return (
                   <div key={i} className="relative group">
-                    <button onClick={() => { setPresetIdx(i); setEditMode(false); onPresetChange?.(selectedTs, i); }}
+                    <button onClick={() => { setPresetIdx(i); setEditMode(false); savePracticePref(selectedTs, p.name); onPresetChange?.(selectedTs, i); }}
                       className={`${btnBase} ${i === presetIdx && !editMode ? btnActive : btnInactive} ${isCustom ? 'pr-3' : ''}`}>
                       {p.name}
                     </button>
@@ -400,9 +418,9 @@ export const PracticePanel: React.FC<Props> = ({
                 }`}>{timing[i] ?? i + 1}</span>
               )}
               <button onClick={() => canEdit && toggleCell(i)} disabled={!canEdit}
-                className={`w-6 h-7 flex items-center justify-center rounded text-xs font-bold border transition-all select-none
+                className={`w-6 h-7 flex items-center justify-center rounded text-xs font-bold border transition-all select-none outline-none focus:outline-none
                   ${isActive ? 'ring-2 ring-emerald-400 scale-110' : ''}
-                  ${canEdit ? 'cursor-pointer hover:scale-105' : 'cursor-default'}
+                  ${canEdit ? 'cursor-pointer hover:scale-105' : 'cursor-default pointer-events-none'}
                   ${stroke === 'D' || stroke === 'DL'
                     ? (isActive ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-emerald-100 dark:bg-emerald-900/40 border-emerald-400 text-emerald-600 dark:text-emerald-300')
                     : stroke === 'U'

@@ -100,3 +100,16 @@ export const deleteCustomPreset = (name: string, ts: TimeSignature): void => {
   const existing = loadCustomPresets().filter(p => !(p.name === name && p.ts === ts));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
 };
+
+const PREF_KEY = 'acordespro_prac_pref';
+
+export const savePracticePref = (ts: TimeSignature, presetName: string): void => {
+  try { localStorage.setItem(PREF_KEY, JSON.stringify({ ts, name: presetName })); } catch (_) {}
+};
+
+export const loadPracticePref = (): { ts: TimeSignature; name: string } | null => {
+  try {
+    const raw = localStorage.getItem(PREF_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+};
