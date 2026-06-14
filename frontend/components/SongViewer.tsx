@@ -141,7 +141,14 @@ const FloatChordDiagramSVG: React.FC<{ shape: ChordShape; color: string; size?: 
   const fs = size === 'md' ? 9 : 7;
   return (
     <div className="flex flex-col items-center">
-      <span className="text-white font-bold text-sm mb-0.5 leading-none" style={{ textShadow: `0 0 8px ${color}88` }}>Tr.{shape.baseFret}</span>
+      {shape.baseFret > 1 && (
+        <span
+          className="font-black leading-none mb-1 px-2 py-0.5 rounded-full shadow-lg"
+          style={{ background: color, color: '#000', fontSize: size === 'md' ? 13 : 11, opacity: 0.95 }}
+        >
+          {shape.baseFret}fr
+        </span>
+      )}
       <svg width={W} height={H} className="text-white/90" overflow="visible">
         {shape.baseFret === 1 && <rect x={sx(0)} y={fy(0)-2.5} width={sx(5)-sx(0)} height={3.5} rx={1.5} fill="currentColor" />}
         {[0,1,2,3,4,5].map(s => <line key={s} x1={sx(s)} y1={fy(0)} x2={sx(s)} y2={fy(nFrets)} stroke="currentColor" strokeWidth={0.9} />)}
