@@ -7,6 +7,8 @@ export interface PracticeSettings {
   delayFeedback: number;
   delayWet: number;
   reverb: number;
+  strumTs?: string;
+  strumPresetName?: string;
 }
 
 export interface SongData {

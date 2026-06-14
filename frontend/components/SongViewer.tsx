@@ -19,6 +19,7 @@ import { SingMode } from './SingMode';
 import { publishCommunitySong } from '../services/communitySongs';
 import { ChordPlayView } from './ChordPlayView';
 import { AudioFX } from './AudioFX';
+import { TimeSignature, ALL_PRESETS, loadCustomPresets, loadPracticePref } from '../utils/strumPresets';
 
 const EqToolbarIcon = () => (
   <svg viewBox="0 0 24 24" width={20} height={20} fill="currentColor">
@@ -233,8 +234,20 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
   const [showPracticeMode, setShowPracticeMode] = useState(false);
   const [practiceChord, setPracticeChord] = useState<string | null>(null);
   const [practiceIsPlaying, setPracticeIsPlaying] = useState(false);
-  const [practiceTs, setPracticeTs] = useState<import('../utils/strumPresets').TimeSignature>('4/4');
-  const [practicePresetIdx, setPracticePresetIdx] = useState(0);
+  const [practiceTs, setPracticeTs] = useState<TimeSignature>(() =>
+    (song.practiceSettings?.strumTs as TimeSignature) ?? loadPracticePref()?.ts ?? '4/4'
+  );
+  const [practicePresetName, setPracticePresetName] = useState<string>(() =>
+    song.practiceSettings?.strumPresetName ?? loadPracticePref()?.name ?? ''
+  );
+  const [practicePresetIdx, setPracticePresetIdx] = useState<number>(() => {
+    const ts = (song.practiceSettings?.strumTs as TimeSignature) ?? loadPracticePref()?.ts ?? '4/4';
+    const name = song.practiceSettings?.strumPresetName ?? loadPracticePref()?.name ?? '';
+    if (!name) return 0;
+    const list = [...ALL_PRESETS.filter(p => p.ts === ts), ...loadCustomPresets().filter(p => p.ts === ts)];
+    const idx = list.findIndex(p => p.name === name);
+    return idx >= 0 ? idx : 0;
+  });
   const chordCursorRef = useRef(-1);           // index into [data-chord-display] spans for strum-sync
   const practiceIsPlayingRef = useRef(false);  // for use inside intervals without stale closure
   const floatingChordRef = useRef<string | null>(null);
@@ -994,7 +1007,23 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
           {!editMode && (
             <button
               onClick={() => {
-                const toSave = bakeSongTranspose(song, transposeSteps);
+                const transposed = bakeSongTranspose(song, transposeSteps);
+                const toSave: SongData = {
+                  ...transposed,
+                  practiceSettings: {
+                    ...transposed.practiceSettings,
+                    bpm: transposed.practiceSettings?.bpm ?? 80,
+                    eqBass: transposed.practiceSettings?.eqBass ?? 0,
+                    eqMids: transposed.practiceSettings?.eqMids ?? 0,
+                    eqTreble: transposed.practiceSettings?.eqTreble ?? 0,
+                    delayTime: transposed.practiceSettings?.delayTime ?? 0,
+                    delayFeedback: transposed.practiceSettings?.delayFeedback ?? 0,
+                    delayWet: transposed.practiceSettings?.delayWet ?? 0,
+                    reverb: transposed.practiceSettings?.reverb ?? 0,
+                    strumTs: practiceTs,
+                    strumPresetName: practicePresetName,
+                  },
+                };
                 if (savedId) onUpdate(toSave); else onSave(toSave);
                 if (transposeSteps !== 0) setTransposeSteps(0);
               }}
@@ -1089,7 +1118,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
           onRestart={handleRestartPractice}
           sharedTs={practiceTs}
           sharedPresetIdx={practicePresetIdx}
-          onPresetChange={(ts, idx) => { setPracticeTs(ts); setPracticePresetIdx(idx); }}
+          onPresetChange={(ts, idx, name) => { setPracticeTs(ts); setPracticePresetIdx(idx); setPracticePresetName(name); }}
           measuresOverride={ttChordMeasures[ttChordIdx]}
           onMeasuresChange={n => setTtChordMeasures(prev => ({ ...prev, [ttChordIdx]: n }))}
         />
@@ -1645,6 +1674,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({ song, savedId, onBack, o
                       onRestart={handleRestartPractice}
                       sharedTs={practiceTs}
                       sharedPresetIdx={practicePresetIdx}
+                      onPresetChange={(ts, idx, name) => { setPracticeTs(ts); setPracticePresetIdx(idx); setPracticePresetName(name); }}
                       measuresOverride={ttChordMeasures[ttChordIdx]}
                       onMeasuresChange={n => setTtChordMeasures(prev => ({ ...prev, [ttChordIdx]: n }))}
                     />

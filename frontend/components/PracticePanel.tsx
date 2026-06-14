@@ -28,7 +28,7 @@ interface Props {
   autoStart?: boolean;
   sharedTs?: TimeSignature;
   sharedPresetIdx?: number;
-  onPresetChange?: (ts: TimeSignature, idx: number) => void;
+  onPresetChange?: (ts: TimeSignature, idx: number, name: string) => void;
   measuresOverride?: number;
   onMeasuresChange?: (n: number) => void;
 }
@@ -184,7 +184,9 @@ export const PracticePanel: React.FC<Props> = ({
     setPresetIdx(newIdx >= 0 ? newIdx : 0);
     setEditMode(false);
     setSaveName('');
-    onPresetChange?.(selectedTs, newIdx >= 0 ? newIdx : 0);
+    const finalIdx = newIdx >= 0 ? newIdx : 0;
+    const finalName = allForTs[finalIdx]?.name ?? name;
+    onPresetChange?.(selectedTs, finalIdx, finalName);
   };
 
   const handleDeleteCustom = (name: string) => {
@@ -192,14 +194,15 @@ export const PracticePanel: React.FC<Props> = ({
     const updated = loadCustomPresets();
     setCustomPresets(updated);
     setPresetIdx(0);
-    onPresetChange?.(selectedTs, 0);
+    const firstAfter = [...ALL_PRESETS.filter(p => p.ts === selectedTs), ...updated.filter(p => p.ts === selectedTs)][0];
+    onPresetChange?.(selectedTs, 0, firstAfter?.name ?? '');
   };
 
   const handleTsChange = (ts: TimeSignature) => {
     setSelectedTs(ts); setPresetIdx(0); setEditMode(false);
     const firstForTs = [...ALL_PRESETS.filter(p => p.ts === ts), ...loadCustomPresets().filter(p => p.ts === ts)][0];
     if (firstForTs) savePracticePref(ts, firstForTs.name);
-    onPresetChange?.(ts, 0);
+    onPresetChange?.(ts, 0, firstForTs?.name ?? '');
   };
 
   const pattern = customPattern;
@@ -308,7 +311,7 @@ export const PracticePanel: React.FC<Props> = ({
                 const isCustom = 'custom' in p && (p as CustomPreset).custom;
                 return (
                   <div key={i} className="relative group">
-                    <button onClick={() => { setPresetIdx(i); setEditMode(false); savePracticePref(selectedTs, p.name); onPresetChange?.(selectedTs, i); }}
+                    <button onClick={() => { setPresetIdx(i); setEditMode(false); savePracticePref(selectedTs, p.name); onPresetChange?.(selectedTs, i, p.name); }}
                       className={`${btnBase} ${i === presetIdx && !editMode ? btnActive : btnInactive} ${isCustom ? 'pr-3' : ''}`}>
                       {p.name}
                     </button>
